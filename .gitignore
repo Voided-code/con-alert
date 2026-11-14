@@ -1,0 +1,19 @@
+# your own details and everything the tool saves while running: never shared
+config.json
+recipients.json
+email.json
+whatsapp.json
+telegram.json
+ntfy.json
+spots.json
+alerts.csv
+state/
+logs/
+reference/
+# built or installed locally
+conviewer
+.venv/
+__pycache__/
+*.pyc
+*.tmp
+.DS_Store

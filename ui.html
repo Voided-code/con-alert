@@ -1,0 +1,2445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10161d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="CON alert">
+<title>CON alert</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%2310161d'/><circle cx='32' cy='32' r='22' fill='none' stroke='%23f5c518' stroke-width='3'/><circle cx='32' cy='32' r='12' fill='none' stroke='%23f5c518' stroke-width='2' opacity='.6'/><path d='M32 32 L32 10 A22 22 0 0 1 51 21 Z' fill='%23f5c518' opacity='.35'/><line x1='32' y1='32' x2='51' y2='21' stroke='%23f5c518' stroke-width='3' stroke-linecap='round'/><circle cx='42' cy='40' r='5' fill='%23ff5d5d'/></svg>">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+  :root {
+    --bg: #10161d; --panel: #18212b; --panel2: #1f2a36; --line: #2c3a49;
+    --text: #e6edf3; --muted: #93a4b5; --accent: #f5c518; --accent-ink: #1a1500;
+    --ok: #4cc38a; --warn: #f0a23b; --bad: #ff5d5d;
+    --me: #57d184; --ally: #6aaef5; --war: #ff5d5d; --neutral: #f0a23b;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+         font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+           background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  h1 { font-size: 16px; margin: 0; letter-spacing: .02em; }
+  h2 { font-size: 12px; margin: 0 0 8px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .grow { flex: 1; }
+  .pill { padding: 3px 10px; border-radius: 999px; font-size: 12px; background: var(--panel2);
+          border: 1px solid var(--line); color: var(--muted); }
+  .pill.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, transparent); }
+  .pill.off { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, transparent); }
+  button { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line);
+           border-radius: 6px; padding: 6px 12px; cursor: pointer; touch-action: manipulation; }
+  button:hover:not(:disabled) { border-color: var(--muted); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button.active { outline: 2px solid var(--accent); }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; padding: 16px; align-items: start; }
+  #toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  #hint { color: var(--muted); font-size: 13px; }
+  #banner { background: color-mix(in srgb, var(--warn) 18%, var(--panel)); border: 1px solid var(--warn);
+            border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; }
+  #banner button { margin-left: 8px; }
+
+  /* ---- the map ---- */
+  #stage { position: relative; background: #12263a; border: 1px solid var(--line); border-radius: 6px;
+           overflow: hidden; height: min(74vh, 820px); min-height: 420px; }
+  #surface { position: absolute; inset: 0; cursor: grab; touch-action: none;
+             user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  #surface.panning { cursor: grabbing; }
+  #surface.adding { cursor: crosshair; }
+  #map, #fx { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+  #fx { pointer-events: none; }
+  #boxes { position: absolute; inset: 0; pointer-events: none; }
+  .box { position: absolute; border: 2px solid var(--accent); background: rgba(245, 197, 24, .07);
+         cursor: move; pointer-events: auto; }
+  #surface.adding .box { pointer-events: none; }
+  .box.off { border-style: dashed; border-color: var(--muted); background: rgba(147, 164, 181, .06); }
+  .box.alert { border-color: var(--bad); background: rgba(255, 93, 93, .16); }
+  .box.sel { border-width: 3px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .6); }
+  .box.ghost { border-style: dashed; pointer-events: none; }
+  .box.ring { border-radius: 50%; border-style: dashed; pointer-events: none; cursor: default; }      /* follows a troop */
+  .box.ring.alert { border-style: solid; }
+  .box.ring .tag { left: 50%; top: -24px; transform: translateX(-50%); border-radius: 3px; }
+  .box .tag { position: absolute; left: -2px; top: -22px; padding: 1px 7px; font-size: 12px; font-weight: 600;
+              white-space: nowrap; background: var(--accent); color: var(--accent-ink); border-radius: 3px 3px 0 0; }
+  .box.off .tag { background: var(--muted); }
+  .box.alert .tag { background: var(--bad); color: #fff; }
+  .box .h { position: absolute; width: 14px; height: 14px; background: #fff; border: 2px solid #000; border-radius: 2px; }
+  .box .h::after { content: ""; position: absolute; inset: -9px; }             /* easier to grab */
+  .h.nw { left: -8px; top: -8px; cursor: nwse-resize; } .h.se { right: -8px; bottom: -8px; cursor: nwse-resize; }
+  .h.ne { right: -8px; top: -8px; cursor: nesw-resize; } .h.sw { left: -8px; bottom: -8px; cursor: nesw-resize; }
+  #tip { position: absolute; pointer-events: none; background: rgba(10, 15, 20, .94); border: 1px solid var(--line);
+         border-radius: 4px; padding: 4px 8px; font-size: 12px; max-width: 340px; z-index: 3; }
+  #ctl { position: absolute; right: 10px; bottom: 10px; display: grid; gap: 6px; z-index: 4; }
+  #ctl button, #chip { background: rgba(16, 22, 29, .88); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  #ctl button { width: 40px; height: 40px; padding: 0; font-size: 20px; line-height: 1; display: grid; place-items: center; }
+  #ctl svg { width: 18px; height: 18px; }
+  #chip { position: absolute; left: 10px; bottom: 10px; z-index: 4; border-color: var(--bad); color: #fff; font-weight: 600; }
+  #chip b { color: var(--bad); }
+
+  /* ---- details of what was clicked ---- */
+  #panel { position: absolute; top: 10px; right: 10px; width: 310px; max-height: calc(100% - 20px); z-index: 5;
+           display: flex; flex-direction: column; background: rgba(16, 22, 29, .95); border: 1px solid var(--line);
+           border-radius: 8px; box-shadow: 0 8px 28px rgba(0, 0, 0, .55); }
+  #panel[hidden] { display: none; }
+  #panelClose { position: absolute; top: 6px; right: 6px; width: 32px; height: 32px; padding: 0; z-index: 1; }
+  #panelBody { overflow: auto; -webkit-overflow-scrolling: touch; padding: 12px; overscroll-behavior: contain; }
+  .ptitle { font-weight: 700; margin: 0 40px 8px 0; }
+  .card + .card { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
+  .chead { display: flex; align-items: center; gap: 8px; margin-right: 36px; font-size: 15px; }
+  .sw { flex: none; width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, .5); }
+  .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .status { margin: 8px 0; padding: 6px 8px; border-radius: 6px; background: var(--panel2); border-left: 3px solid var(--muted); font-size: 13px; }
+  .status.bad { border-left-color: var(--bad); background: rgba(255, 93, 93, .13); }
+  .status.go { border-left-color: var(--ok); }
+  .unit { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 13px; padding: 3px 0; }
+  .unit .hp { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .bar { grid-column: 1 / -1; height: 4px; border-radius: 2px; background: #0b1016; overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 2px; }
+  .sect { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 10px 0 4px; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; font-size: 13px; }
+  dt { color: var(--muted); } dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+  .link { display: block; width: 100%; text-align: left; margin-top: 6px; font-size: 13px; }
+  .pbtns { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+  #legend { display: flex; gap: 6px 12px; flex-wrap: wrap; margin-top: 6px; color: var(--muted); font-size: 12px; align-items: center; }
+  #legend .icon { padding: 1px 8px; min-height: 0; }
+  #legend label { cursor: pointer; color: var(--text); white-space: nowrap; }
+  #legend i { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  #legend .ln { width: 16px; height: 0; border-top: 2px solid var(--bad); border-radius: 0; vertical-align: 3px; }
+  aside { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px 12px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 10px; border-bottom: 1px solid var(--line); }
+  .tabs button { border: 0; background: none; border-radius: 0; padding: 6px 10px 8px; color: var(--muted); font-weight: 600; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+  .tab[hidden] { display: none; }
+  #find { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; width: 220px; max-width: 100%; }
+  .seg { display: inline-flex; } .seg button { border-radius: 0; margin-left: -1px; } .seg button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; } .seg button:last-child { border-radius: 0 6px 6px 0; }
+  #toolbar button:disabled { display: none; }
+  #hist { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  #hist input { flex: 1; min-width: 80px; accent-color: var(--accent); }
+  #hist #histTime { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 9ch; text-align: right; }
+  #histLive.on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, transparent); }
+  #histLive:not(.on) { color: var(--warn); }
+  #help { margin-top: 8px; padding: 10px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; font-size: 12px; color: var(--muted); }
+  #help p { margin: 2px 0; } #help .ln { display: inline-block; width: 16px; border-top: 2px solid var(--bad); vertical-align: 3px; }
+  #drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 100%); z-index: 30; overflow: auto; background: var(--panel);
+            border-left: 1px solid var(--line); box-shadow: -12px 0 32px rgba(0, 0, 0, .45); padding: 0 16px 24px; }
+  #drawer[hidden] { display: none; }
+  #drawer .dhead { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; background: var(--panel);
+                   padding: 12px 0 10px; border-bottom: 1px solid var(--line); z-index: 1; }
+  #drawer .dhead h2 { margin: 0; }
+  #drawer .dsec { padding: 14px 0; border-bottom: 1px solid var(--line); }
+  #drawer .dsec:last-child { border-bottom: 0; }
+  #drawer .row { flex-wrap: wrap; }
+  #route { margin: 0; }
+  #route .note { margin-bottom: 10px; } #route ol { padding-left: 20px; } #route li { margin-bottom: 4px; }
+  #route .row { margin-bottom: 8px; flex-wrap: wrap; }
+  #route .lists { display: grid; gap: 16px; }
+  #route h3 { font-size: 13px; margin: 0 0 8px; }
+  .rcpt { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
+  .rcpt li { display: flex; align-items: center; gap: 8px; padding: 5px 5px 5px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel2); }
+  .rcpt li { flex-wrap: wrap; } .rcpt li.bad { border-color: var(--bad); } .rcpt li.warn { border-color: var(--warn); }
+  .rcpt li small { order: 9; flex-basis: 100%; font-size: 12px; color: var(--warn); padding-bottom: 3px; } .rcpt li.bad small { color: var(--bad); }
+  .rcpt .how { font-size: 12px; color: var(--ally); } .rcpt .how.sms { color: var(--ok); }
+  .rcpt .sw2 { width: 17px; height: 17px; flex: none; margin: 0; cursor: pointer; }
+  .rcpt li.off span { color: var(--muted); text-decoration: line-through; } .rcpt li.off { opacity: .75; }
+  .rcpt li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  #route .row input.name { font-weight: 400; padding: 7px 8px; min-width: 150px; }
+  #route .form { display: grid; gap: 8px; max-width: 460px; margin-bottom: 10px; font-size: 13px; color: var(--muted); }
+  #route .form label { display: grid; gap: 3px; } #route .form input { font-weight: 400; padding: 7px 8px; }
+  #route .form details { display: grid; gap: 8px; } #route .form summary { cursor: pointer; margin-bottom: 6px; }
+  #route a { color: var(--ally); }
+  #drawer .cols { display: grid; gap: 16px; }
+  #recfile { margin-bottom: 0; word-break: break-word; }
+  .fold { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; padding: 0; border: 0;
+          background: none; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; min-height: 0; }
+  .fold i { font-style: normal; font-size: 14px; transition: transform .15s; }
+  .fold[aria-expanded="false"] i { transform: rotate(-90deg); }
+  aside h2:has(.fold[aria-expanded="false"]) { margin-bottom: 14px; }
+  .act { border: 1px solid var(--line); border-radius: 6px; background: var(--panel2); padding: 8px 10px; margin-bottom: 8px; font-size: 13px; }
+  .act .who { display: flex; gap: 8px; align-items: baseline; } .act .who b { flex: 1; }
+  .act .who small, .act .meta { color: var(--muted); font-size: 12px; }
+  .act svg { display: block; width: 100%; height: 46px; margin: 6px 0 2px; overflow: visible; }
+  .act svg .unw { fill: var(--line); } .act svg text { fill: var(--muted); font-size: 9px; }
+  .act svg .now { stroke: var(--text); stroke-width: 1; stroke-dasharray: 2 2; }
+  .act ul { margin: 4px 0 0; padding-left: 16px; } .act li { margin: 2px 0; }
+  #feedSum { color: var(--muted); font-size: 12px; margin: 0 0 8px; }
+  .ccard .bar2 { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  #feed { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 6px; }
+  #feed li { border-left: 3px solid var(--line); background: var(--panel2); border-radius: 0 6px 6px 0; padding: 6px 8px;
+             font-size: 13px; cursor: pointer; }
+  #feed li:hover { background: #263444; }
+  #feed li.bad { border-left-color: var(--bad); } #feed li.warn { border-left-color: var(--warn); } #feed li.me { border-left-color: var(--me); }
+  #feed li small { display: block; color: var(--muted); }
+  #list { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 8px; }
+  #list li { border: 1px solid var(--line); border-radius: 6px; padding: 8px; background: var(--panel2); cursor: pointer; }
+  #list li.sel { border-color: var(--accent); }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .row + .row { margin-top: 6px; font-size: 12px; color: var(--muted); }
+  input.name { flex: 1; min-width: 0; font: inherit; font-weight: 600; color: var(--text); background: var(--bg);
+               border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; }
+  .st { flex: 1; text-align: right; }
+  .st.bad { color: var(--bad); font-weight: 600; } .st.warn { color: var(--warn); } .st.ok { color: var(--ok); }
+  .icon { padding: 3px 8px; }
+  .note { color: var(--muted); font-size: 12px; margin: 0 0 16px; }
+  .empty { color: var(--muted); padding: 8px 0; }
+  #alerts { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 6px; font-size: 12px; }
+  #alerts li { border-left: 3px solid var(--bad); padding: 2px 0 2px 8px; }
+  #alerts li.neutral { border-left-color: var(--warn); }
+  #alerts .when { color: var(--muted); }
+  #log { margin: 0; font: 11px/1.5 ui-monospace, Menlo, monospace; color: var(--muted); white-space: pre-wrap;
+         word-break: break-word; max-height: 220px; overflow: auto; }
+  #toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--panel2);
+           border: 1px solid var(--line); border-radius: 6px; padding: 10px 16px; max-width: 86vw;
+           box-shadow: 0 6px 24px rgba(0, 0, 0, .5); z-index: 40; }
+  #toast.bad { border-color: var(--bad); }
+
+  /* ---- full screen: the map takes the whole window, the toolbar floats on it ---- */
+  body.full { overflow: hidden; }
+  body.full #stage { position: fixed; inset: 0; height: auto; min-height: 0; border: 0; border-radius: 0; z-index: 20; }
+  body.full #toolbar { position: fixed; z-index: 21; top: 0; left: 0; right: 0; margin: 0; pointer-events: none;
+                       padding: calc(8px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) 14px calc(10px + env(safe-area-inset-left));
+                       background: linear-gradient(rgba(10, 15, 20, .8), rgba(10, 15, 20, 0)); }
+  body.full #toolbar > * { pointer-events: auto; }
+  body.full #toolbar button:disabled { display: none; }
+  body.full #toolbar button:not(.primary) { background: rgba(16, 22, 29, .88); }
+  body.full #panel { top: 58px; max-height: calc(100% - 68px); }
+  body.full #ctl { right: calc(10px + env(safe-area-inset-right)); bottom: calc(10px + env(safe-area-inset-bottom)); }
+  body.full #chip { left: calc(10px + env(safe-area-inset-left)); bottom: calc(10px + env(safe-area-inset-bottom)); }
+
+  /* ---- phones ---- */
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  @media (max-width: 700px) {
+    #find { width: 100%; order: -1; }
+    header { padding: 8px 10px; gap: 8px; }
+    h1 { font-size: 15px; }
+    header button { font-size: 13px; padding: 7px 10px; white-space: nowrap; }
+    #btnShow { display: none; }                       /* it puts a window on the Mac's screen: no use from a phone */
+    header .pill { font-size: 11px; }
+    main { padding: 10px; gap: 12px; }
+    #toolbar { gap: 5px; margin-bottom: 8px; }
+    #toolbar button { padding: 8px 9px; font-size: 13px; }
+    #toolbar button:disabled { display: none; }      /* Discard and Save appear once something changed */
+    #stage { height: 64vh; height: 64dvh; min-height: 320px; }
+    #panel { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 46%; }
+    body.full #panel { top: auto; max-height: 46%; bottom: calc(8px + env(safe-area-inset-bottom)); }
+    #panel:not([hidden]) ~ #ctl, #panel:not([hidden]) ~ #chip { display: none; }
+    #tip { left: 8px !important; right: 8px; top: 8px !important; max-width: none; font-size: 13px; }
+    input.name, #route .form input, #route .row input.name { font-size: 16px; }  /* smaller text makes the phone zoom the page on focus */
+    #legend { gap: 8px 14px; font-size: 13px; }
+  }
+  @media (max-height: 520px) and (orientation: landscape) {
+    #stage { height: calc(100vh - 16px); height: calc(100dvh - 16px); min-height: 240px; }
+    #panel { top: 8px; left: auto; right: 8px; bottom: auto; width: 300px; max-height: calc(100% - 16px); }
+  }
+  @media (pointer: coarse) {
+    button { min-height: 38px; }
+    .icon { min-width: 38px; }
+    .box .h { width: 18px; height: 18px; }
+    .h.nw { left: -10px; top: -10px; } .h.se { right: -10px; bottom: -10px; } .h.ne { right: -10px; top: -10px; } .h.sw { left: -10px; bottom: -10px; }
+    .box .h::after { inset: -14px; }
+    #ctl button { width: 46px; height: 46px; }
+    #legend input { width: 18px; height: 18px; vertical-align: -4px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>CON alert</h1>
+  <span id="pill" class="pill">checking…</span>
+  <span class="grow"></span>
+  <button id="btnSettings" aria-haspopup="dialog">Settings</button>
+</header>
+<main>
+  <section>
+    <div id="toolbar">
+      <input id="find" list="findList" type="search" placeholder="Find player or country" autocomplete="off" aria-label="Find a player or country">
+      <datalist id="findList"></datalist>
+      <button id="btnAdd" class="primary">+ Spot</button>
+      <span class="seg"><button id="btnWhole">World</button><button id="btnSpots">Spots</button><button id="btnHome">Me</button></span>
+      <span id="hint"></span>
+      <span class="grow"></span>
+      <button id="btnDiscard" disabled>Discard</button>
+      <button id="btnSave" class="primary" disabled>Save</button>
+    </div>
+    <div id="banner" hidden></div>
+    <div id="stage">
+      <div id="surface"><canvas id="map"></canvas><canvas id="fx"></canvas><div id="boxes"></div></div>
+      <div id="tip" hidden></div>
+      <div id="panel" hidden><button id="panelClose" aria-label="Close details">✕</button><div id="panelBody"></div></div>
+      <button id="chip" hidden title="Jump to the next fight"></button>
+      <div id="ctl">
+        <button id="btnFull" title="Full screen" aria-label="Full screen"><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6V2h4M12 2h4v4M16 12v4h-4M6 16H2v-4"/></svg></button>
+        <button id="btnZoomIn" title="Zoom in" aria-label="Zoom in">+</button>
+        <button id="btnZoomOut" title="Zoom out" aria-label="Zoom out">−</button>
+      </div>
+    </div>
+    <div id="hist">
+      <button id="histLive" class="on" title="Back to the live map">● Live</button>
+      <button id="histPlay" title="Play back the saved history" aria-label="Play">▶</button>
+      <input id="histRange" type="range" min="0" max="0" value="0" aria-label="Go back in time">
+      <span id="histTime"></span>
+    </div>
+    <div id="legend">
+      <span><i style="background:var(--me)"></i>You</span>
+      <span><i style="background:var(--ally)"></i>Allies</span>
+      <span><i style="background:var(--war)"></i>At war</span>
+      <span><i style="background:var(--neutral)"></i>Neutral</span>
+      <span class="grow"></span>
+      <label><input type="checkbox" id="chkMove"> Routes</label>
+      <label><input type="checkbox" id="chkSight"> Sight</label>
+      <label><input type="checkbox" id="chkRange"> Ranges</label>
+      <label><input type="checkbox" id="chkNames"> Names</label>
+      <label><input type="checkbox" id="chkGhosts"> Predictions</label>
+      <button id="btnHelp" class="icon" aria-expanded="false" aria-controls="help" title="What the map shows">?</button>
+    </div>
+    <div id="help" hidden>
+      <p><b>Markers</b> as in the game: flag, unit symbol (a stack if mixed), number of units, strength bar.</p>
+      <p><b>Routes:</b> dashes by land · dots by sea · thin arc by air. <span class="ln"></span> attack.</p>
+      <p><b style="color:var(--accent)">?</b> radar contact, not identified · <b>~</b> predicted position of a group out of sight.</p>
+      <p>Click anything for details. Drag a spot box or its corners to change it, then Save.</p>
+    </div>
+  </section>
+  <aside>
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="now" class="on"><span id="feedTitle">Now</span></button>
+      <button role="tab" data-tab="players"><span id="actTitle">Players</span></button>
+      <button role="tab" data-tab="spots"><span id="spotsTitle">Spots</span></button>
+    </div>
+    <div class="tab" data-tab="now">
+      <p id="feedSum"></p>
+      <ul id="feed"></ul>
+    </div>
+    <div class="tab" data-tab="players" hidden>
+      <p class="note" id="actNote"></p>
+      <div id="actList"></div>
+    </div>
+    <div class="tab" data-tab="spots" hidden>
+      <ul id="list"></ul>
+    </div>
+  </aside>
+</main>
+<div id="drawer" hidden role="dialog" aria-label="Settings">
+  <div class="dhead"><h2>Settings</h2><button id="drawerClose" class="icon" aria-label="Close settings">✕</button></div>
+  <div class="dsec">
+    <div class="row"><button id="btnMon">Start monitor</button><button id="btnTest">Send test alert</button><button id="btnShow">Show game window</button></div>
+  </div>
+  <div class="dsec">
+    <div id="route">
+        <h2>Where alerts go</h2>
+        <p class="note" id="routeState"></p>
+        <div class="lists">
+          <div>
+            <h3>Messages</h3>
+            <ul id="phList" class="rcpt"></ul>
+            <div class="row"><input id="phNew" class="name" placeholder="+61 400 000 000" inputmode="tel" autocomplete="off" aria-label="Number to add"><button id="phAdd">Add</button></div>
+            <p class="note">Tap <b>iMessage</b> to switch a number to <b>SMS</b> (no picture).</p>
+          </div>
+          <div>
+            <h3>Emails</h3>
+            <div id="emOnBox" hidden>
+              <ul id="emList" class="rcpt"></ul>
+              <div class="row"><input id="emNew" class="name" type="email" placeholder="name@example.com" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Email address to add"><button id="emAdd">Add</button></div>
+              <p class="note" id="emFromNote"></p>
+              <button id="routeOff">Turn email off</button>
+            </div>
+            <button id="emShow" hidden>Set up email</button>
+            <div id="emSetup" hidden>
+              <p class="note">Needs an <b>app password</b>, not your normal one
+                (<a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">Gmail</a> ·
+                <a href="https://account.apple.com" target="_blank" rel="noopener">iCloud</a>).</p>
+              <div class="form">
+                <label>Send from (your email address) <input id="emFrom" class="name" type="email" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+                <label>App password for it <input id="emPass" class="name" type="password" autocomplete="off"></label>
+                <label>First address to send alerts to (leave empty for the same address) <input id="emTo" class="name" type="email" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+                <details><summary>Other mail provider</summary>
+                  <label>Outgoing (SMTP) server <input id="emHost" class="name" placeholder="smtp.example.com" autocapitalize="off" spellcheck="false"></label>
+                  <label>Port <input id="emPort" class="name" placeholder="587" inputmode="numeric"></label>
+                </details>
+              </div>
+              <div class="row"><button id="emTest" class="primary">Send a test email</button><button id="emHide">Cancel</button></div>
+            </div>
+            <div id="emPending" hidden>
+              <p class="note" id="emPendingNote"></p>
+              <div class="row"><button id="emConfirm" class="primary">It arrived: use email</button><button id="emAgain">Change the details</button><button id="emCancel">Cancel</button></div>
+            </div>
+          </div>
+          <div>
+            <h3>WhatsApp</h3>
+            <div id="waOnBox" hidden>
+              <ul id="waList" class="rcpt"></ul>
+              <div class="row"><input id="waNew" class="name" placeholder="+61 400 000 000" inputmode="tel" autocomplete="off" aria-label="WhatsApp number to add"><button id="waAdd">Add</button></div>
+              <button id="waCopy" hidden>Copy my Messages numbers here</button>
+              <div id="waAcct" hidden>
+                <p class="note">Paste your <b>WhatsApp Business Account ID</b> (on Meta's setup page).</p>
+                <div class="row"><input id="waAcctId" class="name" inputmode="numeric" autocomplete="off" placeholder="WhatsApp Business Account ID" aria-label="WhatsApp Business Account ID"><button id="waAcctSave" class="primary">Save</button></div>
+              </div>
+              <p class="note" id="waNote"></p>
+              <div class="row"><button id="waCheck" hidden>Check approval again</button><button id="waOff">Turn WhatsApp off</button></div>
+            </div>
+            <button id="waShow" hidden>Set up WhatsApp</button>
+            <div id="waSetup" hidden>
+              <p class="note">From Meta's WhatsApp setup page: the access token and Phone number ID. Add each phone under <b>Manage recipients</b> there too.</p>
+              <div class="form">
+                <label>Access token <input id="waToken" class="name" type="password" autocomplete="off"></label>
+                <label>Phone number ID <input id="waPhoneId" class="name" inputmode="numeric" autocomplete="off"></label>
+              </div>
+              <div class="row"><button id="waConnect" class="primary">Connect</button><button id="waHide">Cancel</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+  </div>
+  <div class="dsec">
+      <div class="cols">
+        <div>
+          <h2>Alert record</h2>
+          <ul id="alerts"></ul>
+          <p class="note" id="recfile"></p>
+        </div>
+        <div>
+          <h2>Monitor log</h2>
+          <pre id="log"></pre>
+        </div>
+      </div>
+  </div>
+</div>
+<div id="toast" hidden></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const surface = $('surface');
+const COARSE = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+const FS = COARSE ? 1.15 : 1;          // text on the map
+const SEA = '#12263a', OUTSIDE = '#0e1d2d', INK = '#0b1016';
+const DOT = {me: '#57d184', ally: '#6aaef5', war: '#ff5d5d', neutral: '#f0a23b', none: '#aaaaaa'};
+const RGB = {me: '87, 209, 132', ally: '106, 174, 245', war: '255, 93, 93', neutral: '240, 162, 59', none: '170, 170, 170'};
+const REL_TEXT = {me: 'you', ally: 'ally', war: 'at war', neutral: 'neutral', none: 'no owner'};
+const NEUTRAL_HUES = [28, 48, 72, 165, 182, 258, 280, 305, 326];      // kept away from the green, blue and red used for relations
+const MIN_SIZE = 12;       // smallest spot side, in map units
+const TX = 16, TY = 8;     // the map is cut into tiles so only the part in view is drawn
+
+let geo = null;            // the map's shape: {w, h, land: [{id, n, c:[x,y], city, b:[[x,y,...]], box, tile}], edges}
+let art = null;            // where the game's own marker pictures are: {icons: {number: path}, boom}
+let world = null;          // live data: {me, players:{id:[nation, rel, player, vps, ai, capital, coalition]}, owners:[...], armies:[{...}], byId}
+let tiles = null, pathsKey = '', nations = [], capitals = new Set();
+let view = {x: 0, y: 0, k: 0.1};      // map point at the centre of the picture, and screen pixels per map unit
+let spots = [];            // {key, id, name, enabled, dirty} plus world:[x,y,w,h] for a box, or army: id of the troop it follows
+let saved = '[]';
+let selected = null, mode = null, drag = null, mon = null, gameState = 'ok';
+let sel = null;            // what the details panel shows: {type:'army', ids:[...]} or {type:'prov', i, data}
+let marks = [];            // unit markers as last drawn: {x, y, ax, ay, w, h, o, list:[armies], kinds, mode}
+let fights = [], fightAt = 0, feedKey = '';
+let keyN = 0, toastTimer = null, drawQueued = false, viewLoaded = false, animating = false;
+const pointers = new Map();           // fingers (or the mouse) currently down on the map
+let show = {move: true, sight: false, range: false, names: true, ghosts: true};
+let ghostMarks = [];       // predicted positions as last drawn: {x, y, r, g}
+try { Object.assign(show, JSON.parse(localStorage.getItem('conalert.show')) || {}); } catch (e) { /* private window */ }
+const etaText = m => !m ? '' : m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m` : `${m}m`;
+const clock = m => new Date(Date.now() + m * 60000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+const cap = s => s ? s[0].toUpperCase() + s.slice(1) : '';
+
+async function api(path, body) {
+  const r = await fetch(path, body ? {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                      body: JSON.stringify(body)} : {});
+  const j = await r.json();
+  if (!r.ok || j.error) throw new Error(j.error || r.statusText);
+  return j;
+}
+function toast(msg, bad) {
+  const t = $('toast');
+  t.textContent = msg; t.className = bad ? 'bad' : ''; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, bad ? 7000 : 3500);
+}
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+const snapshot = () => JSON.stringify(spots.map(s => [s.id, s.name, s.enabled, s.world, s.army]));
+// a spot that follows a troop: that troop (if still in sight) and the circle it watches, as [x, y, radius]
+const troopOf = s => (s.army && world ? world.byId.get(s.army) : null) || null;
+const ringOf = s => { const a = troopOf(s); return a ? [a.x, a.y, s.radius || a.sight || 0] : null; };
+const isDirty = () => snapshot() !== saved;
+const byKey = key => spots.find(s => s.key === key);
+const relOf = owner => (world && world.players[owner] ? world.players[owner][1] : 'none');
+const nationOf = owner => (world && world.players[owner] ? world.players[owner][0] : '');
+const isForeign = rel => rel === 'war' || rel === 'neutral' || rel === 'none';
+const isFighting = a => a.st === 'attacking' || a.st === 'bombarding' || a.st === 'bombing' || !!a.atk || (a.by && a.by.length > 0);
+// a radar-only contact: 'large aircraft signature' (size 10 is a small signature, 30 a large one)
+const radarText = a => (a.rc || []).map(([kind, size]) => `${size <= 10 ? 'small' : 'large'} ${kind}`).join(' and ') + ' signature';
+const unitsText = a => a.rc ? 'radar contact (' + radarText(a) + ')' : (a.u || []).map(u => `${u[0]} ${u[1]}`).join(', ') || 'units';
+
+// ------------------------------------------------------------- coordinates
+const size = () => [$('map').clientWidth, $('map').clientHeight];
+// map x -> screen x, using whichever copy of the wrap-around map is nearest the centre of the picture
+function sx(x) { const w = geo.w, [W] = size(); return ((((x - view.x) % w) + w * 1.5) % w - w / 2) * view.k + W / 2; }
+function sy(y) { return (y - view.y) * view.k + size()[1] / 2; }
+function toWorld(ev) {
+  const r = $('map').getBoundingClientRect();
+  return [view.x + (ev.clientX - r.left - r.width / 2) / view.k, view.y + (ev.clientY - r.top - r.height / 2) / view.k];
+}
+const wrapX = x => ((x % geo.w) + geo.w) % geo.w;
+function clampView() {
+  const [W, H] = size();
+  const kmin = Math.max(W / geo.w * 0.9, H / geo.h * 0.45);       // narrow screens: fill the height, the map wraps sideways
+  view.k = Math.max(kmin, Math.min(10, view.k));
+  view.y = Math.max(0, Math.min(geo.h, view.y));
+  view.x = wrapX(view.x);
+  try { localStorage.setItem('conalert.view', JSON.stringify(view)); } catch (e) { /* private window */ }
+}
+function fit(x0, y0, x1, y1) {
+  const [W, H] = size();
+  view = {x: (x0 + x1) / 2, y: (y0 + y1) / 2, k: Math.min(W / Math.max(1, x1 - x0), H / Math.max(1, y1 - y0)) * 0.85};
+  clampView(); render();
+}
+// fit a set of rectangles [x, y, w, h] that may straddle the wrap-around
+function fitRects(rects, pad, minW, minH) {
+  if (!rects.length) return fit(0, 0, geo.w, geo.h);
+  const ref = rects[0][0];
+  const rel = x => ref + (((x - ref) % geo.w) + geo.w * 1.5) % geo.w - geo.w / 2;
+  const x0 = Math.min(...rects.map(a => rel(a[0]))) - pad, y0 = Math.min(...rects.map(a => a[1])) - pad;
+  const x1 = Math.max(...rects.map(a => rel(a[0]) + a[2])) + pad, y1 = Math.max(...rects.map(a => a[1] + a[3])) + pad;
+  const padX = Math.max(0, minW - (x1 - x0)) / 2, padY = Math.max(0, minH - (y1 - y0)) / 2;   // keep some surroundings in view
+  fit(x0 - padX, y0 - padY, x1 + padX, y1 + padY);
+}
+const fitSpots = () => fitRects(spots.map(s => { if (s.world) return s.world; const c = ringOf(s); return c && [c[0] - c[2], c[1] - c[2], c[2] * 2, c[2] * 2]; }).filter(Boolean), 150, 2600, 1500);
+function fitHome() {
+  if (!world) return;
+  const mine = geo.land.filter((p, i) => world.owners[i] === world.me).map(p => [p.box[0], p.box[1], p.box[2] - p.box[0], p.box[3] - p.box[1]]);
+  if (mine.length) fitRects(mine, 120, 900, 600);
+}
+function sheetHeight() {                 // height of the details panel when it lies across the bottom (phones)
+  const p = $('panel');
+  return !p.hidden && p.offsetWidth > $('stage').clientWidth * 0.6 ? p.offsetHeight + 8 : 0;
+}
+function goTo(x, y, kMin) {
+  view.x = x; view.y = y; view.k = Math.max(view.k, kMin || 0);
+  clampView();
+  view.y += sheetHeight() / 2 / view.k;
+  clampView(); render();
+  if (!document.body.classList.contains('full')) $('stage').scrollIntoView({block: 'nearest', behavior: 'smooth'});
+}
+
+// ---------------------------------------------------------------- loading
+async function loadGeo() {
+  try {
+    geo = await api('/api/geo');
+    for (const p of geo.land) {
+      let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+      for (const ring of p.b) for (let i = 0; i < ring.length; i += 2) {
+        x0 = Math.min(x0, ring[i]); x1 = Math.max(x1, ring[i]); y0 = Math.min(y0, ring[i + 1]); y1 = Math.max(y1, ring[i + 1]);
+      }
+      p.box = [x0, y0, x1, y1];
+      p.tile = Math.min(TX - 1, Math.max(0, Math.floor((x0 + x1) / 2 / geo.w * TX))) + TX * Math.min(TY - 1, Math.max(0, Math.floor((y0 + y1) / 2 / geo.h * TY)));
+    }
+    buildEdges();
+    if (!viewLoaded) {
+      viewLoaded = true;
+      let v = null;
+      try { v = JSON.parse(localStorage.getItem('conalert.view')); } catch (e) { /* none */ }
+      if (v && isFinite(v.x) && isFinite(v.y) && v.k > 0) { view = v; clampView(); } else fitSpots();
+    }
+    buildPaths(); render();
+  } catch (e) { setTimeout(loadGeo, 5000); }
+}
+// Every border line once, with the province on each side (-1: sea), so country borders and coasts can be drawn heavier.
+function buildEdges() {
+  const seen = new Map(), a = [], b = [], xy = [];
+  geo.land.forEach((p, i) => {
+    for (const ring of p.b) {
+      const m = ring.length / 2;
+      for (let j = 0; j < m; j++) {
+        const j2 = (j + 1) % m, x1 = ring[2 * j], y1 = ring[2 * j + 1], x2 = ring[2 * j2], y2 = ring[2 * j2 + 1];
+        const p1 = x1 * 8192 + y1, p2 = x2 * 8192 + y2;
+        if (p1 === p2) continue;
+        const key = p1 < p2 ? p1 + '_' + p2 : p2 + '_' + p1, e = seen.get(key);
+        if (e === undefined) { seen.set(key, a.length); a.push(i); b.push(-1); xy.push(x1, y1, x2, y2); }
+        else if (b[e] < 0 && a[e] !== i) b[e] = i;
+      }
+    }
+  });
+  geo.edges = {n: a.length, a, b, xy};
+}
+// ---- history: every check is saved; the slider under the map goes back to any of them
+const hist = {times: [], on: false, t: null, play: null, busy: false, want: null, me: null};
+async function loadHistIndex() {
+  try {
+    const r = await api('/api/history');
+    hist.times = r.times || [];
+    const R = $('histRange'); R.max = Math.max(0, hist.times.length - 1);
+    if (!hist.on) R.value = R.max;
+    $('hist').hidden = hist.times.length < 2;
+    histLabel();
+  } catch (e) { /* server stopped */ }
+}
+function histBanner() {
+  const b = $('banner');
+  if (hist.on) { b.textContent = 'Showing the map as saved at ' + $('histTime').textContent + '. '; const x = document.createElement('button'); x.textContent = 'Back to live'; x.className = 'primary'; x.onclick = histLive; b.append(x); b.hidden = false; }
+  else if (b.dataset.hist) b.hidden = true;
+  b.dataset.hist = hist.on ? '1' : '';
+}
+function histLabel() {
+  const t = hist.on ? hist.t : null, d = t ? new Date(t * 1000) : null;
+  $('histTime').textContent = d ? d.toLocaleString([], {weekday: 'short', hour: '2-digit', minute: '2-digit'}) : 'now';
+  $('histLive').classList.toggle('on', !hist.on);
+  histBanner();
+}
+async function histShow(t) {
+  hist.want = t;
+  if (hist.busy) return;
+  hist.busy = true;
+  while (hist.want != null) {
+    const want = hist.want; hist.want = null;
+    try {
+      const r = await api('/api/history?t=' + want);
+      if (r.ok && hist.on) {
+        hist.me = hist.me ?? (world && world.me);
+        world = Object.assign({}, r.world, {me: hist.me});
+        if (!world.players && hist.lastPlayers) world.players = hist.lastPlayers;
+        world.byId = new Map(world.armies.map(a => [a.id, a]));
+        capitals = new Set(Object.values(world.players || {}).map(p => p[5]).filter(Boolean));
+        hist.t = r.t; histLabel();
+        buildPaths(); render(); renderFeed();
+        if (sel) renderPanel();
+      }
+    } catch (e) { /* skip */ }
+  }
+  hist.busy = false;
+}
+function histLive() {
+  hist.on = false; clearInterval(hist.play); hist.play = null; $('histPlay').textContent = '▶';
+  $('histRange').value = $('histRange').max; histLabel(); loadWorld(true);
+}
+$('histRange').addEventListener('input', () => {
+  const i = +$('histRange').value;
+  if (i >= hist.times.length - 1) return histLive();
+  if (!hist.on && world) hist.lastPlayers = world.players;
+  hist.on = true; histShow(hist.times[i]);
+});
+$('histLive').onclick = histLive;
+$('histPlay').onclick = () => {
+  if (hist.play) { clearInterval(hist.play); hist.play = null; $('histPlay').textContent = '▶'; return; }
+  const R = $('histRange');
+  if (!hist.on || +R.value >= hist.times.length - 1) R.value = 0;
+  if (!hist.on && world) hist.lastPlayers = world.players;
+  hist.on = true; $('histPlay').textContent = '❚❚';
+  const step = Math.max(1, Math.round(hist.times.length / 240));             // about 30 seconds for the whole history
+  hist.play = setInterval(() => {
+    const i = Math.min(hist.times.length - 1, +R.value + step);
+    R.value = i;
+    if (i >= hist.times.length - 1) return histLive();
+    histShow(hist.times[i]);
+  }, 120);
+};
+
+async function loadWorld(force) {
+  if (hist.on) return;                                       // looking at the past: keep that picture
+  try {
+    const r = await api('/api/world');
+    gameState = r.state;
+    if (r.art && r.art.icons && Object.keys(r.art.icons).length) art = r.art;
+    if (r.world) {
+      const prevWorld = world;
+      world = r.world;
+      setTimeout(fillFind, 0);
+      noteMotion(prevWorld);
+      world.byId = new Map(world.armies.map(a => [a.id, a]));
+      capitals = new Set(Object.values(world.players).map(p => p[5]).filter(Boolean));
+    }
+    const b = $('banner');
+    if (r.state === 'ok') b.hidden = true;
+    else {
+      b.textContent = 'No live data: ' + r.message + '. The map below may be out of date, and spots are not being watched.';
+      const fix = {noviewer: 'Start the background game', login: 'Open the game window to log in'}[r.state];
+      if (fix) {
+        const btn = document.createElement('button');
+        btn.textContent = fix; btn.className = 'primary';
+        btn.onclick = async () => { btn.disabled = true; try { toast((await api('/api/fix', {})).message); } catch (e) { toast(e.message, true); } setTimeout(loadWorld, 3000); };
+        b.append(btn);
+      }
+      b.hidden = false;
+    }
+    if (force || !isDirty()) {
+      const selId = selected && byKey(selected) ? byKey(selected).id : null;
+      spots = r.spots.map(s => ({key: 'k' + keyN++, id: s.id, name: s.name, enabled: s.enabled, world: s.world, army: s.army || null, radius: s.radius || null, dirty: false}));
+      const again = spots.find(s => s.id && s.id === selId);
+      selected = again ? again.key : null;
+      saved = snapshot();
+      if (force) mode = null;
+      const typing = document.activeElement && document.activeElement.closest('#list');
+      if (!typing) renderList();
+    }
+    if (geo) { buildPaths(); render(); }
+    renderFeed();
+    if (sel) renderPanel();
+  } catch (e) { /* server stopped */ }
+}
+async function loadMonitor() {
+  try { mon = await api('/api/monitor'); renderMonitor(); } catch (e) { /* server stopped */ }
+}
+
+// ------------------------------------------------------------ the base map
+function addRing(path, ring) {
+  path.moveTo(ring[0], ring[1]);
+  for (let i = 2; i < ring.length; i += 2) path.lineTo(ring[i], ring[i + 1]);
+  path.closePath();
+}
+function colourOf(owner) {
+  const rel = relOf(owner), v = (owner * 7) % 3;
+  if (rel === 'me') return 'hsl(140 48% 36%)';
+  if (rel === 'ally') return `hsl(211 52% ${37 + v * 3}%)`;
+  if (rel === 'war') return `hsl(2 60% ${39 + v * 3}%)`;
+  if (rel === 'none') return 'hsl(210 6% 25%)';
+  return `hsl(${NEUTRAL_HUES[owner % NEUTRAL_HUES.length]} 20% ${34 + v * 3}%)`;       // every neutral country its own muted tint
+}
+function buildPaths() {
+  if (!geo) return;
+  const key = world ? world.owners.join(',') + JSON.stringify(world.players) : 'none';
+  if (key === pathsKey && tiles) return;
+  pathsKey = key;
+  tiles = Array.from({length: TX * TY}, () => ({x0: 1e9, y0: 1e9, x1: -1e9, y1: -1e9, fills: new Map(),
+                                                inner: new Path2D(), nation: new Path2D(), coast: new Path2D()}));
+  const sums = {};
+  geo.land.forEach((p, i) => {
+    const owner = world ? world.owners[i] : 0, t = tiles[p.tile], col = colourOf(owner);
+    if (!t.fills.has(col)) t.fills.set(col, new Path2D());
+    for (const ring of p.b) addRing(t.fills.get(col), ring);
+    t.x0 = Math.min(t.x0, p.box[0]); t.y0 = Math.min(t.y0, p.box[1]); t.x1 = Math.max(t.x1, p.box[2]); t.y1 = Math.max(t.y1, p.box[3]);
+    if (owner > 0) {                                                     // for country name labels: average position
+      const a = p.c[0] / geo.w * 2 * Math.PI, s = sums[owner] || (sums[owner] = {s: 0, c: 0, y: 0, n: 0});
+      s.s += Math.sin(a); s.c += Math.cos(a); s.y += p.c[1]; s.n++;
+    }
+  });
+  const E = geo.edges;
+  for (let e = 0; e < E.n; e++) {
+    const a = E.a[e], b = E.b[e], t = tiles[geo.land[a].tile];
+    const path = b < 0 ? t.coast : (world && world.owners[a] !== world.owners[b]) ? t.nation : t.inner;
+    path.moveTo(E.xy[e * 4], E.xy[e * 4 + 1]); path.lineTo(E.xy[e * 4 + 2], E.xy[e * 4 + 3]);
+  }
+  nations = Object.entries(sums).filter(([, t]) => t.n >= 3).map(([owner, t]) =>
+    ({x: wrapX(Math.atan2(t.s, t.c) / (2 * Math.PI) * geo.w), y: t.y / t.n, n: t.n, name: nationOf(+owner), rel: relOf(+owner)}))
+    .sort((a, b) => b.n - a.n);
+}
+function fitCanvas(c) {
+  const [W, H] = size(), dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = Math.round(W * dpr), h = Math.round(H * dpr);
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  return [c.getContext('2d'), dpr, W, H];
+}
+// text with a dark outline; with `placed` it is skipped when it would sit on top of an earlier label
+function label(ctx, text, x, y, px, alpha, placed, weight) {
+  ctx.font = `${weight || 600} ${px}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+  if (placed) {
+    const w = ctx.measureText(text).width / 2 + 3, h = px / 2 + 2;
+    for (const r of placed) if (x - w < r[2] && x + w > r[0] && y - h < r[3] && y + h > r[1]) return false;
+    placed.push([x - w, y - h, x + w, y + h]);
+  }
+  ctx.lineWidth = 3; ctx.strokeStyle = `rgba(8, 14, 20, ${alpha * 0.85})`; ctx.strokeText(text, x, y);
+  ctx.fillStyle = `rgba(240, 245, 250, ${alpha})`; ctx.fillText(text, x, y);
+  return true;
+}
+function star(ctx, x, y, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, q = i % 2 ? r * 0.45 : r; ctx.lineTo(x + q * Math.cos(a), y + q * Math.sin(a)); }
+  ctx.closePath();
+}
+function drawBase() {
+  const [ctx, dpr, W, H] = fitCanvas($('map'));
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = OUTSIDE; ctx.fillRect(0, 0, W * dpr + 2, H * dpr + 2);
+  if (!geo || !tiles) return;
+  const k = view.k;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const top = Math.max(0, sy(0)), bottom = Math.min(H, sy(geo.h));
+  ctx.fillStyle = SEA; ctx.fillRect(0, top, W, bottom - top);
+  const x0 = view.x - W / 2 / k, x1 = view.x + W / 2 / k, y0 = view.y - H / 2 / k, y1 = view.y + H / 2 / k;
+  let step = 250;                                             // a faint grid over the sea
+  while (step * k < 70) step *= 2;
+  ctx.beginPath();
+  for (let g = Math.ceil(x0 / step) * step; g <= x1; g += step) { const X = Math.round((g - view.x) * k + W / 2) + 0.5; ctx.moveTo(X, top); ctx.lineTo(X, bottom); }
+  for (let g = Math.ceil(Math.max(0, y0) / step) * step; g <= Math.min(geo.h, y1); g += step) { const Y = Math.round(sy(g)) + 0.5; ctx.moveTo(0, Y); ctx.lineTo(W, Y); }
+  ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(130, 180, 220, .07)'; ctx.stroke();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (let n = Math.floor(x0 / geo.w); n <= Math.floor(x1 / geo.w); n++) {
+    const off = n * geo.w;
+    const vis = tiles.filter(t => t.x1 + off >= x0 && t.x0 + off <= x1 && t.y1 >= y0 && t.y0 <= y1);
+    ctx.setTransform(dpr * k, 0, 0, dpr * k, dpr * (W / 2 - (view.x - off) * k), dpr * (H / 2 - view.y * k));
+    for (const t of vis) for (const [col, path] of t.fills) {
+      ctx.fillStyle = col; ctx.fill(path);
+      if (k < 0.45) { ctx.strokeStyle = col; ctx.lineWidth = 0.9 / k; ctx.stroke(path); }      // hide hairline gaps between provinces
+    }
+    if (k >= 0.45) { ctx.lineWidth = 0.7 / k; ctx.strokeStyle = 'rgba(6, 12, 18, .32)'; for (const t of vis) ctx.stroke(t.inner); }
+    ctx.lineWidth = (k > 0.5 ? 1.2 : 0.8) / k; ctx.strokeStyle = 'rgba(165, 205, 235, .40)'; for (const t of vis) ctx.stroke(t.coast);
+    ctx.lineWidth = (k > 0.5 ? 2.4 : k > 0.15 ? 1.5 : 1) / k; ctx.strokeStyle = 'rgba(6, 10, 14, .92)'; for (const t of vis) ctx.stroke(t.nation);
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const inView = (x, y, m) => x > -m && x < W + m && y > -m && y < H + m;
+  const placed = [];
+  if (k < 1.0) {                                             // country names, the biggest first
+    for (const n of nations) {
+      if (!n.name || n.n * k * k < 0.3) continue;
+      const x = sx(n.x), y = sy(n.y);
+      if (inView(x, y, 60)) label(ctx, n.name.toUpperCase(), x, y, Math.max(11, Math.min(20, 9 + Math.sqrt(n.n) * k * 5)) * FS, k < 0.6 ? 0.92 : 0.6, placed, 700);
+    }
+  }
+  if (k >= 0.3) {                                            // capitals, then cities, then every province
+    const todo = [];
+    for (const p of geo.land) {
+      const capital = capitals.has(p.id);
+      if (!(capital || (p.city && k >= 0.55) || k >= 1.8)) continue;
+      const x = sx(p.c[0]), y = sy(p.c[1]);
+      if (inView(x, y, 40)) todo.push([capital ? 0 : p.city ? 1 : 2, p, x, y]);
+    }
+    todo.sort((a, b) => a[0] - b[0]);
+    const units = world ? world.armies.map(a => [sx(a.x), sy(a.y)]) : [];
+    for (const [rank, p, x, y] of todo) {
+      const up = units.some(u => Math.abs(u[0] - x) < 24 && Math.abs(u[1] - y) < 16) ? (k >= 1 ? 27 : 23) : 11;
+      const ok = label(ctx, p.n.trim(), x, y - up, (rank === 0 ? 12 : rank === 1 ? 11 : 10) * FS, rank === 2 ? 0.62 : 0.94, placed);
+      if (rank === 0) { star(ctx, x, y, 5.5); ctx.fillStyle = '#ffd95a'; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = INK; ctx.stroke(); }
+      else if (rank === 1 && ok) { ctx.beginPath(); ctx.arc(x, y, 2.2, 0, 7); ctx.fillStyle = 'rgba(240, 245, 250, .9)'; ctx.fill(); }
+    }
+  }
+}
+
+// ------------------------------------------------- units, routes, fights (drawn on top, animated)
+// one simple symbol per kind of unit, drawn in a box about 2s wide
+function glyph(ctx, kind, x, y, s) {
+  ctx.lineWidth = 1.8; ctx.strokeStyle = INK; ctx.fillStyle = INK; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const line = (...p) => { ctx.beginPath(); ctx.moveTo(x + p[0] * s, y + p[1] * s); for (let i = 2; i < p.length; i += 2) ctx.lineTo(x + p[i] * s, y + p[i + 1] * s); };
+  switch (kind) {
+    case 'armor': ctx.beginPath(); ctx.ellipse(x, y, s, s * 0.55, 0, 0, 7); ctx.stroke(); break;
+    case 'recon': line(-1, 0.65, 1, -0.65); ctx.stroke(); break;
+    case 'art': ctx.beginPath(); ctx.arc(x, y, s * 0.45, 0, 7); ctx.fill(); break;
+    case 'aa': ctx.beginPath(); ctx.ellipse(x, y + s * 0.65, s, s * 1.2, 0, Math.PI, 0); ctx.stroke(); break;
+    case 'radar': ctx.beginPath(); ctx.arc(x, y + s * 0.6, s * 0.5, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+                  ctx.beginPath(); ctx.arc(x, y + s * 0.6, s * 1.1, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+                  ctx.beginPath(); ctx.arc(x, y + s * 0.6, s * 0.16, 0, 7); ctx.fill(); break;
+    case 'fort': line(-0.9, 0.65, -0.9, -0.65, -0.45, -0.65, -0.45, -0.2, 0.45, -0.2, 0.45, -0.65, 0.9, -0.65, 0.9, 0.65); ctx.closePath(); ctx.fill(); break;
+    case 'fighter': case 'bomber': line(0, -0.95, 0.25, -0.1, 1.05, 0.5, 0.25, 0.45, 0.4, 0.95, 0, 0.75, -0.4, 0.95, -0.25, 0.45, -1.05, 0.5, -0.25, -0.1); ctx.closePath(); ctx.fill(); break;
+    case 'plane': line(0, -0.9, 0, 0.9); ctx.stroke(); line(-1, 0, 1, 0); ctx.stroke(); line(-0.4, 0.8, 0.4, 0.8); ctx.stroke(); break;
+    case 'heli': line(-1, -0.6, 1, 0.6, 1, -0.6, -1, 0.6); ctx.closePath(); ctx.fill(); break;
+    case 'uav': line(-1, -0.55, 0, 0.55, 1, -0.55); ctx.stroke(); break;
+    case 'ship': line(-1.05, 0.05, 1.05, 0.05, 0.7, 0.75, -0.7, 0.75); ctx.closePath(); ctx.fill(); ctx.fillRect(x - s * 0.3, y - s * 0.7, s * 0.6, s * 0.75); break;
+    case 'carrier': line(-1.1, 0.1, 1.1, 0.1, 0.8, 0.7, -0.9, 0.7); ctx.closePath(); ctx.fill(); line(-1.1, -0.3, 1.1, -0.3); ctx.stroke(); break;
+    case 'sub': ctx.beginPath(); ctx.ellipse(x, y + s * 0.25, s * 1.05, s * 0.4, 0, 0, 7); ctx.fill(); ctx.fillRect(x - s * 0.25, y - s * 0.6, s * 0.5, s * 0.6); break;
+    case 'missile': line(0, 0.9, 0, -0.9); ctx.stroke(); line(-0.5, -0.3, 0, -0.9, 0.5, -0.3); ctx.stroke(); break;
+    default: line(-1, -0.65, 1, 0.65); ctx.stroke(); line(-1, 0.65, 1, -0.65); ctx.stroke();        // infantry
+  }
+}
+// The game's own pictures (unit symbols, flags, the explosion), fetched through this server. Returns the
+// picture once it has loaded, null until then (and for good if it does not exist).
+const pics = {};
+function pic(path) {
+  if (!path) return null;
+  let p = pics[path];
+  if (!p) {
+    p = pics[path] = new Image();
+    p.onload = () => render();
+    p.src = '/api/asset?p=' + encodeURIComponent(path);
+  }
+  return p.complete && p.naturalWidth ? p : null;
+}
+const flagOf = owner => { const f = world.players[owner] && world.players[owner][7]; return f ? pic(f.replace('/small_', '/medium_')) || pic(f) : null; };
+// Plate colours as in the game (dark green for your side, red for enemies), with blue for allies and
+// amber for neutrals so the four relations stay apart.
+const PLATE = {me: '#1f6412', ally: '#1c4f96', war: '#a8121b', neutral: '#8a5a12', none: '#4a4f55'};
+const TILT = 0.26, SKEW = -0.1;        // the game's markers lean like a card lying on the map
+function tilted(ctx, x, y) { ctx.save(); ctx.translate(x, y); ctx.rotate(TILT); ctx.transform(1, 0, SKEW, 1, 0, 0); }
+// where a point on a leaning card ends up on the screen
+function onCard(x, y, lx, ly) {
+  const px = lx + SKEW * ly, c = Math.cos(TILT), s = Math.sin(TILT);
+  return [x + px * c - ly * s, y + px * s + ly * c];
+}
+// The game's symbol for a kind of unit, exactly as the game's picture has it: a white diamond with an
+// upright dark silhouette. Number 0 is the stack shown for a mixed group. `size` is the diamond's width.
+// Falls back to a drawn symbol until the picture has loaded.
+function symbol(ctx, x, y, size, set, kind) {
+  const im = art && art.icons ? pic(art.icons[set]) : null;
+  if (im) { ctx.imageSmoothingQuality = 'high'; ctx.drawImage(im, x - size / 2, y - size / 2, size, size); return; }
+  const r = size / 2;
+  ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath();
+  ctx.fillStyle = '#fff'; ctx.fill();
+  if (set === 0) stackGlyph(ctx, x, y, size * 0.2); else glyph(ctx, kind, x, y, size * 0.2);
+}
+function burst(ctx, x, y, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 16; i++) { const a = i * Math.PI / 8, q = i % 2 ? r * 0.55 : r; ctx.lineTo(x + q * Math.cos(a), y + q * Math.sin(a)); }
+  ctx.closePath();
+}
+// Armies of one country standing on (nearly) the same place become one marker, drawn the way the game
+// draws them: far out a dot; closer a leaning card with the unit's symbol (the stack symbol if the group
+// is mixed); close up the card grows a flag and the number of units.
+function cluster() {
+  const [W, H] = size(), k = view.k, mode = k < 0.2 ? 'dot' : k < 1.0 ? 'icon' : 'flag', R = mode === 'dot' ? 6 : mode === 'icon' ? 11 : 14, out = [];
+  for (const a of world.armies) {
+    const x = sx(a.x), y = sy(a.y);
+    if (x < -60 || x > W + 60 || y < -60 || y > H + 60) continue;
+    let m = out.find(m => m.o === a.o && !!m.radar === !!a.rc && Math.abs(m.ax - x) < R && Math.abs(m.ay - y) < R);
+    if (!m) out.push(m = {o: a.o, ax: x, ay: y, x, y, list: [], mode, radar: !!a.rc});
+    m.list.push(a);
+  }
+  for (const m of out) {
+    const sets = new Map();
+    m.n = 0; m.hp = 0; m.mhp = 0;
+    for (const a of m.list) {
+      m.hp += a.hp || 0; m.mhp += a.mhp || 0;
+      for (const u of a.u || []) { sets.set(u[5] || 0, (sets.get(u[5] || 0) || 0) + u[0]); m.n += u[0]; }
+    }
+    m.n = m.n || m.list[0].n || 1;
+    m.set = sets.size === 1 ? [...sets.keys()][0] : 0;        // one kind: its own symbol; several: the stack
+    m.kind = m.list.reduce((a, b) => (b.n > a.n ? b : a), m.list[0]).k || 'inf';
+    if (m.radar) m.w = m.h = mode === 'dot' ? 12 : 24;
+    else if (mode === 'dot') m.w = m.h = 9;
+    else if (mode === 'icon') m.w = m.h = 22;
+    else { m.w = 34 + String(m.n).length * 7; m.h = 28; }
+  }
+  // markers of different countries standing on (almost) exactly the same point, e.g. two sides in a fight,
+  // would hide each other completely: fan those out side by side, with a short line to the real spot.
+  // Markers that only partly overlap are left where they are.
+  if (mode !== 'dot') {
+    const done = new Set();
+    for (const m of out) {
+      if (done.has(m)) continue;
+      // "on top of each other": centres closer than about half a marker, so the one underneath is mostly hidden
+      const pile = out.filter(o => !done.has(o) && Math.abs(o.ax - m.ax) < Math.max(o.w, m.w) * 0.45 && Math.abs(o.ay - m.ay) < Math.max(o.h, m.h) * 0.45);
+      pile.forEach(o => done.add(o));
+      if (pile.length < 2) continue;
+      const gap = Math.max(...pile.map(o => o.w)) + 8;       // fully apart (the cards lean, so a little extra)
+      const cx = pile.reduce((s, o) => s + o.ax, 0) / pile.length, cy = pile.reduce((s, o) => s + o.ay, 0) / pile.length;
+      pile.sort((a, b) => a.o - b.o).forEach((o, i) => { o.x = cx + (i - (pile.length - 1) / 2) * gap; o.y = cy - 6; o.spread = true; });
+    }
+  }
+  const rank = {ally: 0, me: 1, none: 2, neutral: 2, war: 3};   // foreigners are drawn last, on top
+  return out.sort((a, b) => rank[relOf(a.o)] - rank[relOf(b.o)]);
+}
+// three layers: "several kinds of unit here" (only until the game's own picture has loaded)
+function stackGlyph(ctx, x, y, s) {
+  ctx.lineWidth = 1.7; ctx.strokeStyle = INK; ctx.lineCap = 'round';
+  for (const [dy, half] of [[-0.75, 0.6], [0, 0.95], [0.75, 0.6]]) { ctx.beginPath(); ctx.moveTo(x - half * s, y + dy * s); ctx.lineTo(x + half * s, y + dy * s); ctx.stroke(); }
+}
+// something your radar picks up but cannot identify: a blip with a sweeping ring and a question mark
+function drawRadar(ctx, m, t, chosen, placed) {
+  const {x, y} = m, r = m.w / 2, rgb = m.o > 0 && world.players[m.o] ? RGB[relOf(m.o)] : '245, 197, 24';
+  const sweep = (t * 1.6) % 1;
+  ctx.beginPath(); ctx.arc(x, y, r + sweep * r * 1.4, 0, 7);
+  ctx.lineWidth = 1.5; ctx.strokeStyle = `rgba(${rgb}, ${0.75 * (1 - sweep)})`; ctx.stroke();       // expanding ping
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 7);
+  ctx.fillStyle = 'rgba(10, 16, 22, .82)'; ctx.fill();
+  ctx.setLineDash([3, 2.5]); ctx.lineWidth = 2; ctx.strokeStyle = `rgba(${rgb}, 1)`; ctx.stroke(); ctx.setLineDash([]);
+  ctx.font = `800 ${m.mode === 'dot' ? 9 : 14}px -apple-system, BlinkMacSystemFont, sans-serif`;
+  ctx.fillStyle = `rgba(${rgb}, 1)`; ctx.fillText('?', x, y + 0.5);
+  if (chosen) { ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 7); ctx.lineWidth = 2.2; ctx.strokeStyle = '#f5c518'; ctx.stroke(); }
+  if (show.names && view.k >= 0.6) {
+    const a = m.list[0], who = m.o > 0 && nationOf(m.o) ? nationOf(m.o) + '? ' : '';
+    label(ctx, who + 'Radar: ' + (m.list.length > 1 ? `${m.list.length} contacts` : radarText(a)), x, y + r + 14 * FS, 10.5 * FS, 0.95, placed);
+  }
+}
+function drawMark(ctx, m, t, selIds, placed) {
+  const rel = relOf(m.o), foreign = isForeign(rel), list = m.list, {x, y, w, h} = m;
+  const fighting = list.some(isFighting), chosen = list.some(a => selIds.has(a.id));
+  const pulse = 0.5 + 0.5 * Math.sin(t * 6);
+  if (m.radar) return drawRadar(ctx, m, t, chosen, placed);
+  if (m.mode === 'dot') {                                     // the game's far-away dot: a ring with a centre
+    if (fighting) { ctx.beginPath(); ctx.arc(x, y, 7 + pulse * 2, 0, 7); ctx.lineWidth = 2; ctx.strokeStyle = `rgba(255, 80, 60, ${0.5 + pulse * 0.5})`; ctx.stroke(); }
+    ctx.beginPath(); ctx.arc(x, y, 4.2, 0, 7); ctx.fillStyle = DOT[rel]; ctx.fill();
+    ctx.lineWidth = 1.2; ctx.strokeStyle = foreign ? '#fff' : 'rgba(0, 0, 0, .8)'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 1.5, 0, 7); ctx.fillStyle = foreign ? '#fff' : INK; ctx.fill();
+    if (chosen) { ctx.beginPath(); ctx.arc(x, y, 8, 0, 7); ctx.lineWidth = 2; ctx.strokeStyle = '#f5c518'; ctx.stroke(); }
+    return;
+  }
+  const mover = list.find(a => a.mv);
+  if (mover && m.mode !== 'dot') {                           // moving with unknown orders: a short arrow showing which way
+    const rad = (mover.mv.deg - 90) * Math.PI / 180, r0 = Math.max(w, h) / 2 + 4, r1 = r0 + 14;
+    const ax0 = x + Math.cos(rad) * r0, ay0 = y + Math.sin(rad) * r0, ax1 = x + Math.cos(rad) * r1, ay1 = y + Math.sin(rad) * r1;
+    ctx.beginPath(); ctx.moveTo(ax0, ay0); ctx.lineTo(ax1, ay1); ctx.lineWidth = 2.5; ctx.strokeStyle = '#fff'; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ax1 + Math.cos(rad) * 5, ay1 + Math.sin(rad) * 5);
+    ctx.lineTo(ax1 + Math.cos(rad + 2.4) * 6, ay1 + Math.sin(rad + 2.4) * 6); ctx.lineTo(ax1 + Math.cos(rad - 2.4) * 6, ay1 + Math.sin(rad - 2.4) * 6);
+    ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill();
+  }
+  if (m.spread) {                                             // fanned out from a shared spot: a line back to it
+    ctx.beginPath(); ctx.moveTo(m.ax, m.ay); ctx.lineTo(x, y); ctx.lineWidth = 1.2; ctx.strokeStyle = 'rgba(255, 255, 255, .7)'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(m.ax, m.ay, 2.2, 0, 7); ctx.fillStyle = '#fff'; ctx.fill();
+  }
+  const outline = (grow, colour, width) => { ctx.strokeStyle = colour; ctx.lineWidth = width; ctx.strokeRect(-w / 2 - grow, -h / 2 - grow, w + grow * 2, h + grow * 2); };
+  tilted(ctx, x, y);
+  ctx.shadowColor = 'rgba(0, 0, 0, .65)'; ctx.shadowBlur = 5; ctx.shadowOffsetY = 1.5;
+  ctx.fillStyle = PLATE[rel]; ctx.fillRect(-w / 2, -h / 2, w, h);
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; ctx.shadowColor = 'transparent';
+  if (m.mode !== 'icon') {
+    const fh = 11, flag = flagOf(m.o);                        // flag across the top, plate with the count below
+    if (flag) {
+      const sw = Math.min(flag.naturalWidth, flag.naturalHeight * w / fh), sh = sw * fh / w;
+      ctx.drawImage(flag, (flag.naturalWidth - sw) / 2, (flag.naturalHeight - sh) / 2, sw, sh, -w / 2, -h / 2, w, fh);
+    } else { ctx.fillStyle = DOT[rel]; ctx.fillRect(-w / 2, -h / 2, w, fh); }
+    ctx.fillStyle = 'rgba(0, 0, 0, .35)'; ctx.fillRect(-w / 2, -h / 2 + fh - 0.5, w, 1);
+    ctx.font = 'italic 800 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    ctx.textAlign = 'right'; ctx.fillStyle = '#fff'; ctx.fillText(String(m.n), w / 2 - 3.5, -h / 2 + fh + (h - fh) / 2 + 0.5); ctx.textAlign = 'center';
+  }
+  outline(0, 'rgba(0, 0, 0, .55)', 1);
+  if (m.mhp > 0) {                                            // strength left, along the bottom edge
+    const f = Math.max(0, Math.min(1, m.hp / m.mhp));
+    ctx.fillStyle = 'rgba(0, 0, 0, .8)'; ctx.fillRect(-w / 2, h / 2 + 1.5, w, 3.5);
+    ctx.fillStyle = f > 0.6 ? '#4cc38a' : f > 0.3 ? '#f0c23b' : '#ff5d5d'; ctx.fillRect(-w / 2 + 0.5, h / 2 + 2, Math.max(1.5, (w - 1) * f), 2.5);
+  }
+  if (fighting) outline(3 + pulse * 2, `rgba(255, 70, 50, ${0.55 + pulse * 0.45})`, 2);
+  if (chosen) outline(3.5, '#f5c518', 2.2);
+  ctx.restore();
+  if (m.mode === 'icon') symbol(ctx, x, y, 18, m.set, m.kind);
+  else { const [ix, iy] = onCard(x, y, -w / 2 + 10.5, -h / 2 + 11 + (h - 11) / 2); symbol(ctx, ix, iy, 16, m.set, m.kind); }
+  let below = y + h / 2 + 9;
+  if (list[0].w === 'sea' && ![7, 8].includes(m.set)) {       // land units carried by sea
+    ctx.beginPath(); ctx.moveTo(x - 8, below);
+    for (let i = 1; i <= 8; i++) ctx.lineTo(x - 8 + i * 2, below + (i % 2 ? -2 : 0));
+    ctx.lineWidth = 1.3; ctx.strokeStyle = 'rgba(170, 215, 255, .95)'; ctx.stroke();
+    below += 4;
+  }
+  if (show.names && view.k >= 0.8) {
+    const main = list.reduce((a, b) => (b.n > a.n ? b : a), list[0]);
+    const what = unitsText(main), more = list.length > 1 ? ` +${list.length - 1} more` : '';
+    const text = view.k >= 1.5 ? (foreign ? (nationOf(m.o) || 'Unknown') + ': ' : '') + (what.length > 34 ? what.slice(0, 32) + '…' : what) + more
+               : foreign ? nationOf(m.o) || 'Unknown' : '';
+    if (text) label(ctx, text, x, below + 6 * FS, 10.5 * FS, foreign ? 0.95 : 0.8, placed);
+  }
+}
+function drawFx() {
+  const [ctx, dpr, W, H] = fitCanvas($('fx'));
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, W * dpr + 2, H * dpr + 2);
+  animating = false;
+  if (!geo || !world) { marks = []; return; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+  const k = view.k, t = performance.now() / 1000;
+  const inView = (x, y, m) => x > -m && x < W + m && y > -m && y < H + m;
+  const selIds = new Set(sel && sel.type === 'army' ? sel.ids : sel && sel.type === 'country' ? world.armies.filter(a => a.o === sel.o).map(a => a.id) : []);
+  const ring = (a, radius, fill, stroke, dash) => {
+    const x = sx(a.cx != null ? a.cx : a.x), y = sy(a.cy != null ? a.cy : a.y), r = radius * k;
+    if (r < 3 || !inView(x, y, r)) return;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 7);
+    if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+    ctx.setLineDash(dash || []); ctx.lineWidth = 1.2; ctx.strokeStyle = stroke; ctx.stroke(); ctx.setLineDash([]);
+  };
+  for (const a of world.armies) {                             // how far each army sees, shoots, patrols
+    const rgb = RGB[relOf(a.o)], chosen = selIds.has(a.id);
+    if ((show.sight || chosen) && a.sight) ring(a, a.sight, `rgba(${rgb}, ${chosen ? 0.14 : 0.09})`, `rgba(${rgb}, .6)`);
+    if ((show.range || chosen) && a.rng > 5 && !(a.w === 'air' && a.patrol)) ring(a, a.rng, null, `rgba(${rgb}, .75)`, [2, 4]);
+    // aircraft: how far they can fly from their airbase (for the chosen one, and foreign ones when ranges are on)
+    if (a.reach && a.base && (chosen || (show.range && isForeign(relOf(a.o)))))
+      ring({cx: a.base[0], cy: a.base[1]}, a.reach, `rgba(${rgb}, ${chosen ? 0.05 : 0.025})`, `rgba(${rgb}, ${chosen ? 0.6 : 0.35})`, [10, 6]);
+    if (a.patrol && k >= 0.2) ring(a, a.patrol, null, `rgba(${rgb}, .55)`, [7, 5]);
+  }
+  const etas = [];
+  for (const a of world.armies) {                             // where each army is heading
+    const pts = a.pts, chosen = selIds.has(a.id);
+    if (!pts || !pts.length || !(show.move || chosen)) continue;
+    // screen points of the route; legs are grouped into stretches travelled the same way (land, sea, air)
+    const P = [[sx(a.x), sy(a.y)]], runs = [];
+    let wxPrev = a.x, any = inView(P[0][0], P[0][1], 0), len = 0;
+    for (let i = 0; i < pts.length; i += 2) {
+      const dx = (((pts[i] - wxPrev) % geo.w) + geo.w * 1.5) % geo.w - geo.w / 2;     // shortest way round the map
+      const q = [P[P.length - 1][0] + dx * k, sy(pts[i + 1])], how = a.how ? a.how[i / 2] || 0 : 0;
+      wxPrev = pts[i];
+      len += Math.hypot(q[0] - P[P.length - 1][0], q[1] - P[P.length - 1][1]);
+      if (!runs.length || runs[runs.length - 1].how !== how) runs.push({how, from: P.length - 1, to: P.length});
+      else runs[runs.length - 1].to = P.length;
+      P.push(q);
+      any = any || inView(q[0], q[1], 0);
+    }
+    if (!any || len < 10) continue;                           // out of view, or too short to mean anything at this zoom
+    const rgb = RGB[relOf(a.o)];
+    let end = P[P.length - 1], before = P[P.length - 2];
+    for (const run of runs) {
+      const A = P[run.from], B = P[run.to];
+      ctx.beginPath(); ctx.moveTo(A[0], A[1]);
+      if (run.how === 2) {                                    // a flight: one faint arc from take-off to landing
+        const d = Math.hypot(B[0] - A[0], B[1] - A[1]), lift = Math.min(d * 0.22, 220);
+        const side = B[0] >= A[0] ? 1 : -1, nx = (B[1] - A[1]) / (d || 1) * side, ny = -(B[0] - A[0]) / (d || 1) * side;
+        const C = [(A[0] + B[0]) / 2 + nx * lift, (A[1] + B[1]) / 2 + ny * lift];
+        ctx.quadraticCurveTo(C[0], C[1], B[0], B[1]);
+        ctx.setLineDash([11, 5, 2, 5]); ctx.lineDashOffset = -t * 26; ctx.lineWidth = chosen ? 2 : 1.2;
+        ctx.strokeStyle = `rgba(${rgb}, ${chosen ? 0.95 : d > 500 ? 0.45 : 0.7})`; ctx.stroke();
+        if (run.to === P.length - 1) before = C;
+      } else {
+        for (let i = run.from + 1; i <= run.to; i++) ctx.lineTo(P[i][0], P[i][1]);
+        if (run.how === 1) {                                  // by sea: a pale wake with dots along it
+          ctx.setLineDash([]); ctx.lineWidth = chosen ? 8 : 6; ctx.strokeStyle = 'rgba(140, 200, 255, .16)'; ctx.stroke();
+          ctx.lineCap = 'round'; ctx.setLineDash([0.1, 7]); ctx.lineDashOffset = -t * 9; ctx.lineWidth = chosen ? 3.4 : 2.6;
+          ctx.strokeStyle = `rgba(${rgb}, ${chosen ? 1 : 0.9})`; ctx.stroke(); ctx.lineCap = 'butt';
+        } else {                                              // by land: dashes
+          ctx.setLineDash([7, 5]); ctx.lineDashOffset = -t * 12; ctx.lineWidth = chosen ? 2.6 : 1.8;
+          ctx.strokeStyle = `rgba(${rgb}, ${chosen ? 1 : 0.85})`; ctx.stroke();
+        }
+      }
+      ctx.setLineDash([]); ctx.lineDashOffset = 0;
+    }
+    const ang = Math.atan2(end[1] - before[1], end[0] - before[0]);
+    ctx.beginPath(); ctx.moveTo(end[0], end[1]);
+    ctx.lineTo(end[0] - 10 * Math.cos(ang - 0.45), end[1] - 10 * Math.sin(ang - 0.45));
+    ctx.lineTo(end[0] - 10 * Math.cos(ang + 0.45), end[1] - 10 * Math.sin(ang + 0.45));
+    ctx.closePath(); ctx.fillStyle = `rgba(${rgb}, .95)`; ctx.fill();
+    if ((k >= 0.6 || chosen) && a.eta && len > 34) etas.push([etaText(a.eta), end[0], end[1] + 13]);
+    animating = true;
+  }
+  const pulse = 0.5 + 0.5 * Math.sin(t * 6), booms = [];
+  for (const a of world.armies) {                             // who is shooting at whom
+    if (!a.atk || a.atk[1] == null) continue;
+    const x = sx(a.x), y = sy(a.y);
+    const dx = (((a.atk[1] - a.x) % geo.w) + geo.w * 1.5) % geo.w - geo.w / 2;
+    const tx = x + dx * k, ty = sy(a.atk[2]);
+    if (!inView(x, y, 20) && !inView(tx, ty, 20)) continue;
+    if (Math.hypot(tx - x, ty - y) > 6) {
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(tx, ty);
+      ctx.lineWidth = 4.5; ctx.strokeStyle = 'rgba(255, 60, 40, .22)'; ctx.stroke();
+      ctx.setLineDash([9, 6]); ctx.lineDashOffset = -t * 40; ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255, 90, 60, .95)'; ctx.stroke();
+      ctx.setLineDash([]); ctx.lineDashOffset = 0;
+    }
+    const r = (k >= 1 ? 19 : k >= 0.2 ? 16 : 7) + pulse * (k >= 0.2 ? 3 : 1.5), boom = art ? pic(art.boom) : null;
+    if (boom && k >= 0.2) booms.push([boom, tx, ty, r * 1.25]);
+    else {
+      burst(ctx, tx, ty, r);
+      ctx.fillStyle = `rgba(255, 190, 60, ${0.55 + pulse * 0.3})`; ctx.fill();
+      ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(255, 70, 40, .95)'; ctx.stroke();
+    }
+    animating = true;
+  }
+  ghostMarks = [];
+  if (show.ghosts && world.ghosts) for (const g of world.ghosts) {     // predicted positions of groups out of sight
+    const x = sx(g.x), y = sy(g.y), rgb = RGB[relOf(g.o)] || RGB.none, er = Math.max(6, g.err * k);
+    let pad = Math.max(40, er);
+    if (g.net && g.net.length) {
+      if (g.netR == null) { g.netR = 0; for (let i = 0; i + 1 < g.net.length; i += 2) g.netR = Math.max(g.netR, Math.abs((((g.net[i] - g.x) % geo.w) + geo.w * 1.5) % geo.w - geo.w / 2), Math.abs(g.net[i + 1] - g.y)); }
+      pad = Math.max(pad, g.netR * k + 6);
+    }
+    if (!inView(x, y, pad) && !(g.last && inView(sx(g.last[0]), sy(g.last[1]), 20))) continue;
+    const sel1 = sel && sel.type === 'ghost' && sel.id === g.id;
+    if (g.sure == null || g.err > 0) {                              // the area it is in (aircraft: only a patrol circle)
+      ctx.beginPath(); ctx.arc(x, y, er, 0, 7);
+      ctx.fillStyle = `rgba(${rgb}, .08)`; ctx.fill();
+      ctx.setLineDash([2, 4]); ctx.lineWidth = 1.2; ctx.strokeStyle = `rgba(${rgb}, .55)`; ctx.stroke(); ctx.setLineDash([]);
+    }
+    if (g.net && g.net.length && (sel1 || k >= 0.3)) {               // stood still: the roads / sea lanes it could have taken since
+      const wdx = vx => ((((vx - g.x) % geo.w) + geo.w * 1.5) % geo.w - geo.w / 2) * k;
+      ctx.beginPath();
+      for (let i = 0; i + 3 < g.net.length; i += 4) { ctx.moveTo(x + wdx(g.net[i]), sy(g.net[i + 1])); ctx.lineTo(x + wdx(g.net[i + 2]), sy(g.net[i + 3])); }
+      ctx.lineCap = 'round';
+      ctx.lineWidth = sel1 ? 4 : 2.5; ctx.strokeStyle = `rgba(${rgb}, ${sel1 ? 0.28 : 0.12})`; ctx.stroke();
+      ctx.lineWidth = sel1 ? 1.6 : 1; ctx.strokeStyle = `rgba(${rgb}, ${sel1 ? 0.85 : 0.4})`; ctx.stroke();
+      ctx.lineCap = 'butt';
+    }
+    if (sel1) for (const a of g.else || []) {                        // chosen aircraft: the other places it could be
+      if (a.x == null) continue;
+      const ax = x + ((((a.x - g.x) % geo.w) + geo.w * 1.5) % geo.w - geo.w / 2) * k, ay = sy(a.y);
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ax, ay); ctx.setLineDash([2, 5]); ctx.lineWidth = 1; ctx.strokeStyle = `rgba(${rgb}, .5)`; ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(ax, ay, 6, 0, 7); ctx.fillStyle = `rgba(${rgb}, .22)`; ctx.fill();
+      ctx.setLineDash([2, 2]); ctx.lineWidth = 1.2; ctx.strokeStyle = `rgba(${rgb}, .8)`; ctx.stroke(); ctx.setLineDash([]);
+      label(ctx, `${a.pct}%`, ax, ay + 14, 10 * FS, 0.9);
+    }
+    if (sel1 && g.reach && g.base_xy) {                             // chosen aircraft: where else it could be
+      const bxs = x + ((((g.base_xy[0] - g.x) % geo.w) + geo.w * 1.5) % geo.w - geo.w / 2) * k, bys = sy(g.base_xy[1]);
+      ctx.beginPath(); ctx.arc(bxs, bys, g.reach * k, 0, 7); ctx.fillStyle = `rgba(${rgb}, .03)`; ctx.fill();
+      ctx.setLineDash([10, 6]); ctx.lineWidth = 1.2; ctx.strokeStyle = `rgba(${rgb}, .45)`; ctx.stroke(); ctx.setLineDash([]);
+    }
+    if (g.last && k >= 0.35) {                                      // from where it was last seen
+      const lx = x + ((((g.last[0] - g.x) % geo.w) + geo.w * 1.5) % geo.w - geo.w / 2) * k, ly = sy(g.last[1]);
+      if (Math.hypot(lx - x, ly - y) > 8) {
+        ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(x, y); ctx.setLineDash([1, 4]); ctx.lineWidth = 1.5;
+        ctx.strokeStyle = `rgba(${rgb}, .6)`; ctx.stroke(); ctx.setLineDash([]);
+        ctx.beginPath(); ctx.arc(lx, ly, 2.5, 0, 7); ctx.fillStyle = `rgba(${rgb}, .6)`; ctx.fill();
+      }
+    }
+    const s = k >= 0.2 ? 9 : 6;                                      // a faded, dashed marker
+    ctx.beginPath(); ctx.arc(x, y, s, 0, 7); ctx.fillStyle = `rgba(${rgb}, .35)`; ctx.fill();
+    ctx.setLineDash([3, 2]); ctx.lineWidth = 1.6; ctx.strokeStyle = `rgba(${rgb}, .95)`; ctx.stroke(); ctx.setLineDash([]);
+    if (sel1) { ctx.beginPath(); ctx.arc(x, y, s + 4, 0, 7); ctx.lineWidth = 2.2; ctx.strokeStyle = '#f5c518'; ctx.stroke(); }
+    if (k >= 0.35) {
+      ctx.font = `700 ${k >= 0.2 ? 9 : 7}px -apple-system, BlinkMacSystemFont, sans-serif`; ctx.fillStyle = '#fff'; ctx.fillText('~', x, y + 0.5);
+      label(ctx, (g.sure != null ? `${g.sure}%` : `±${g.unc}%`) + ` · ${etaText(g.ago) || '1m'} ago`, x, y + s + 9 * FS, 10 * FS, 0.85);
+    }
+    ghostMarks.push({x, y, r: s, g});
+  }
+  marks = cluster();
+  const placed = marks.map(m => [m.x - m.w / 2 - 2, m.y - m.h / 2 - 2, m.x + m.w / 2 + 2, m.y + m.h / 2 + 5]);
+  for (const m of marks) { if (m.radar || m.list.some(isFighting)) animating = true; drawMark(ctx, m, t, selIds, placed); }
+  for (const [boom, x, y, r] of booms) ctx.drawImage(boom, x - r * 0.2, y - r * 1.5, r * 1.6, r * 1.6);     // beside the marker, as in the game
+  for (const [text, x, y] of etas) label(ctx, text, x, y, 10.5 * FS, 0.9, placed);
+  if (world.battles) for (const [i, min] of world.battles) {     // provinces fought over in the last hour
+    const p = geo.land[i];
+    if (!p) continue;
+    const x = sx(p.c[0]), y = sy(p.c[1]);
+    if (inView(x, y, 20)) { burst(ctx, x, y - 16, 6); ctx.fillStyle = 'rgba(255, 190, 60, .9)'; ctx.fill(); ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255, 70, 40, .95)'; ctx.stroke(); }
+  }
+}
+function draw() { drawQueued = false; drawBase(); drawFx(); }
+setInterval(() => { if (animating && !document.hidden && !drawQueued) requestAnimationFrame(drawFx); }, 80);
+
+// ---------------------------------------------------------------- spots
+function statusOf(s) {
+  if (!s.id) return ['New, not saved yet', 'warn'];
+  if (s.army && world && !troopOf(s)) return ['Troop no longer there', 'warn'];
+  if (s.dirty) return ['Changed, not saved yet', 'warn'];
+  if (!s.enabled) return ['Paused', ''];
+  if (!mon || !mon.running) return ['Monitor stopped', 'warn'];
+  const r = mon.status && mon.status.spots && mon.status.spots[s.id];
+  if (!r) return ['Waiting for first check', ''];
+  if (r.state === 'gone') return ['Troop no longer there', 'warn'];
+  if (r.state !== 'ok') return ['Not being watched', 'warn'];
+  if (r.alert_active) return ['FOREIGN UNITS, text sent', 'bad'];
+  return ['Clear', 'ok'];
+}
+function renderBoxes() {
+  const host = $('boxes');
+  host.innerHTML = '';
+  if (!geo) return;
+  const place = (d, [x, y, w, h]) => d.style.cssText = `left:${sx(x)}px;top:${sy(y)}px;width:${w * view.k}px;height:${h * view.k}px`;
+  for (const s of spots) {
+    const ring = s.army ? ringOf(s) : null;
+    if (!s.world && !ring) continue;
+    const d = document.createElement('div');
+    d.className = 'box' + (ring ? ' ring' : '') + (s.key === selected ? ' sel' : '') + (s.enabled ? '' : ' off') + (statusOf(s)[1] === 'bad' ? ' alert' : '');
+    d.dataset.key = s.key;
+    place(d, ring ? [ring[0] - ring[2], ring[1] - ring[2], ring[2] * 2, ring[2] * 2] : s.world);
+    // the name only when the spot is big enough on screen to carry it (zoomed out they would cover the map),
+    // or when it is chosen or has foreign units in it
+    const big = (ring ? ring[2] * 2 : s.world[2]) * view.k >= 110;
+    if (big || s.key === selected || statusOf(s)[1] === 'bad') {
+      const tag = document.createElement('span');
+      tag.className = 'tag'; tag.textContent = s.name || 'Spot';
+      d.append(tag);
+    } else d.title = s.name || 'Spot';
+    if (s.key === selected && !ring) for (const c of ['nw', 'ne', 'sw', 'se']) {
+      const h = document.createElement('i');
+      h.className = 'h ' + c; h.dataset.corner = c;
+      d.append(h);
+    }
+    host.append(d);
+  }
+  if (drag && drag.type === 'new' && drag.rect) {
+    const g = document.createElement('div');
+    g.className = 'box ghost'; place(g, drag.rect);
+    host.append(g);
+  }
+}
+function renderList() {
+  const ul = $('list');
+  ul.innerHTML = '';
+  if (!spots.length) ul.append(el('div', 'empty', 'No spots yet. Press "+ Spot" and drag a box on the map.'));
+  $('spotsTitle').textContent = 'Spots' + (spots.length ? ` · ${spots.length}` : '');
+  for (const s of spots) {
+    const li = document.createElement('li');
+    li.dataset.key = s.key;
+    if (s.key === selected) li.className = 'sel';
+    li.innerHTML = `<div class="row"><input class="name" maxlength="60" aria-label="Spot name">
+        <button class="icon go" title="Show this spot on the map">Go</button>
+        <button class="icon del" title="Delete this spot">✕</button></div>
+      <div class="row"><label><input type="checkbox" class="en"> Watch</label><span class="st"></span></div>`;
+    li.querySelector('.name').value = s.name;
+    li.querySelector('.en').checked = s.enabled;
+    li.querySelector('.go').hidden = !(s.world || ringOf(s));
+    if (s.army) li.querySelector('.row + .row label').append(' · follows a troop');
+    ul.append(li);
+  }
+  renderStatuses();
+}
+function renderStatuses() {
+  for (const li of document.querySelectorAll('#list li')) {
+    const s = byKey(li.dataset.key);
+    if (!s) continue;
+    const [text, cls] = statusOf(s);
+    const st = li.querySelector('.st');
+    st.textContent = text; st.className = 'st ' + cls;
+  }
+}
+function renderButtons() {
+  const dirty = isDirty();
+  $('btnSave').disabled = $('btnDiscard').disabled = !dirty;
+  $('btnAdd').disabled = !geo;
+  $('btnAdd').classList.toggle('active', !!mode);
+  surface.classList.toggle('adding', !!mode);
+  $('hint').textContent = mode ? (COARSE ? 'Drag a box over the area to watch, or tap to drop one.' : 'Drag a box over the area to watch. Esc cancels.')
+                        : dirty ? 'Unsaved changes.' : '';
+}
+function renderMonitor() {
+  if (!mon) return;
+  const p = $('pill');
+  const t = mon.status && mon.status.time ? mon.status.time.slice(11) : '';
+  const blind = mon.running && mon.status && mon.status.capture && mon.status.capture !== 'ok';
+  p.textContent = !mon.running ? 'Monitor stopped' : blind ? "Can't see the game" : 'Watching' + (t ? ` · ${t.slice(0, 5)}` : '');
+  p.title = mon.running ? `Checks every ${mon.interval}s` + (t ? `, last at ${t}` : '') : '';
+  p.className = 'pill ' + (mon.running && !blind ? 'on' : 'off');
+  $('btnMon').textContent = mon.running ? 'Stop monitor' : 'Start monitor';
+  $('btnTest').title = 'Sends a real alert with a picture by ' + (mon.sends_to || 'iMessage');
+  renderRoute();
+  $('log').textContent = mon.log.join('\n') || 'No log yet.';
+  const al = $('alerts');
+  al.innerHTML = '';
+  for (const r of mon.alerts || []) {
+    const li = document.createElement('li');
+    if (r.relation === 'neutral') li.className = 'neutral';
+    li.append(el('div', 'when', `${r.time} · ${r.spot}`),
+              el('div', '', `${r.country ? r.country + ' (' + r.relation + '): ' : ''}${r.units}${r.where ? ' — ' + r.where : ''}`));
+    al.append(li);
+  }
+  if (!(mon.alerts || []).length) al.append(el('div', 'empty', 'No alerts sent yet.'));
+  $('recfile').textContent = mon.record_file ? 'Full record: ' + mon.record_file : '';
+  renderStatuses();
+  if (!drag) renderBoxes();
+}
+function render() {
+  if (!drawQueued) {
+    drawQueued = true;
+    requestAnimationFrame(() => { if (drawQueued) draw(); });
+    setTimeout(() => { if (drawQueued) draw(); }, 150);       // browsers pause animation frames for hidden pages
+  }
+  renderBoxes(); renderButtons();
+}
+function renderAll() { render(); renderList(); }
+
+// ------------------------------------------------------- where alerts go: a list of numbers and a list of email addresses
+let routeKey = '', emWanted = false, waWanted = false;
+function renderRoute() {
+  const e = mon && mon.email, r = mon && mon.recipients, w = mon && mon.whatsapp || {};
+  if (!e || !r) return;
+  const key = JSON.stringify([e, r, w, emWanted, waWanted, mon.delivery]);
+  if (key === routeKey) return;                               // nothing changed: leave the forms alone while typing
+  routeKey = key;
+  const live = k => (r[k] || []).filter(v => !(r.paused && r.paused[k] || []).includes(v)).length;
+  const nP = live('phones'), nE = e.on ? live('emails') : 0, nW = w.on ? live('whatsapp') : 0;
+  $('routeState').textContent = 'Each alert goes to ' + [nP ? `${nP} number${nP > 1 ? 's' : ''} by text` : '', nE ? `${nE} email address${nE > 1 ? 'es' : ''}` : '',
+                                                         nW ? `${nW} number${nW > 1 ? 's' : ''} on WhatsApp` : ''].filter(Boolean).join(', ').replace(/, ([^,]*)$/, ' and $1') + '.';
+  const fill = (ul, items, kind) => {
+    ul.innerHTML = '';
+    if (!items.length) ul.append(el('div', 'empty', kind === 'phones' ? 'No numbers: nothing is sent by iMessage.' : kind === 'whatsapp' ? 'No numbers yet.' : 'No addresses yet.'));
+    for (const item of items) {
+      const li = el('li'), x = el('button', 'icon', '✕');
+      x.title = 'Remove ' + item; x.setAttribute('aria-label', 'Remove ' + item);
+      x.onclick = () => saveRecipients(kind, mon.recipients[kind].filter(v => v !== item));
+      const paused = (r.paused && r.paused[kind] || []).includes(item), sw = el('input');     // on/off without removing it
+      sw.type = 'checkbox'; sw.checked = !paused; sw.className = 'sw2';
+      sw.title = paused ? 'Switched off: gets no alerts. Tick to switch on.' : 'Gets alerts. Untick to switch off without removing it.';
+      sw.setAttribute('aria-label', 'Send alerts to ' + item);
+      sw.onchange = async () => {
+        const cur = Object.assign({phones: [], emails: [], whatsapp: []}, mon.recipients.paused);
+        cur[kind] = sw.checked ? cur[kind].filter(v => v !== item) : cur[kind].concat(item);
+        if (!await saveRecipients('paused', cur)) sw.checked = !sw.checked;
+      };
+      if (paused) li.classList.add('off');
+      li.append(sw, el('span', '', item));
+      const d = mon.delivery && mon.delivery[kind === 'whatsapp' ? 'wa:' + item : kind === 'phones' ? item : ''];   // did the last one get through?
+      if (d && d.state !== 'ok' && !paused) {
+        li.classList.add(d.state === 'failed' ? 'bad' : 'warn');
+        const note = el('small', '', kind === 'whatsapp' ? `Last alert (${d.at}) was refused: ${d.why}` : d.state === 'failed' ? `Last text (${d.how}, ${d.at}) was NOT delivered` : `Last text (${d.how}, ${d.at}) not confirmed delivered`);
+        note.title = d.why;
+        li.append(note);
+      }
+      if (kind === 'phones' && !item.includes('@')) {              // iMessage, or a carrier SMS for phones without iMessage
+        const sms = (r.sms || []).includes(item), t = el('button', 'icon how' + (sms ? ' sms' : ''), sms ? 'SMS' : 'iMessage');
+        t.title = sms ? 'Sent as a plain SMS (no picture). Press to send as iMessage instead.' : 'Sent as an iMessage with the picture. Press to send as a plain SMS instead.';
+        t.onclick = () => saveRecipients('sms', sms ? r.sms.filter(v => v !== item) : (r.sms || []).concat(item));
+        li.append(t);
+      }
+      li.append(x);
+      ul.append(li);
+    }
+  };
+  fill($('phList'), r.phones, 'phones');
+  fill($('emList'), r.emails, 'emails');
+  fill($('waList'), r.whatsapp || [], 'whatsapp');
+  $('waOnBox').hidden = !w.on;
+  $('waShow').hidden = w.on || waWanted;
+  $('waSetup').hidden = w.on || !waWanted;
+  $('waCheck').hidden = !w.on || w.ready;
+  $('waCopy').hidden = !w.on || (r.whatsapp || []).length > 0 || !r.phones.some(p => !p.includes('@'));
+  $('waAcct').hidden = !w.on || !w.need_account;
+  $('waNote').textContent = !w.on ? '' : `From ${w.from || 'your Meta number'} · ` + (
+      w.need_account ? 'needs the account ID above'
+    : w.ready ? 'alert message approved'
+    : w.note ? `alert message not set up: ${w.note}`
+    : w.template === 'REJECTED' ? 'Meta rejected the alert message'
+    : 'waiting for Meta to approve the alert message')
+    + (w.expires ? ` · token runs out ${w.expires}` : '');
+  $('emOnBox').hidden = !e.on;
+  $('emFromNote').textContent = e.on ? `From ${e.from}` : '';
+  $('emShow').hidden = e.on || e.pending || emWanted;
+  $('emSetup').hidden = !emWanted || e.on;
+  $('emPending').hidden = !e.pending || emWanted;
+  $('emPendingNote').textContent = e.pending ? `A test email was sent to ${e.to}. Check the inbox (and the spam folder). Email stays off until you press "It arrived".` : '';
+}
+async function saveRecipients(kind, list) {
+  try {
+    mon.recipients = await api('/api/recipients', Object.assign({}, mon.recipients, {[kind]: list}));
+    renderRoute(); loadMonitor();
+    return true;
+  } catch (e) { toast(e.message, true); return false; }
+}
+for (const [box, btn, kind] of [['phNew', 'phAdd', 'phones'], ['emNew', 'emAdd', 'emails'], ['waNew', 'waAdd', 'whatsapp']]) {
+  $(btn).onclick = async () => {
+    const v = $(box).value.trim();
+    if (v && await saveRecipients(kind, (mon.recipients[kind] || []).concat(v))) $(box).value = '';
+  };
+  $(box).addEventListener('keydown', ev => { if (ev.key === 'Enter') $(btn).click(); });
+}
+async function waDo(body, done) {
+  try { mon.whatsapp = await api('/api/whatsapp', body); waWanted = false; $('waToken').value = ''; if (done) toast(done(mon.whatsapp)); await loadMonitor(); renderRoute(); return true; }
+  catch (e) { toast(e.message, true); return false; }
+}
+$('waShow').onclick = () => { waWanted = true; renderRoute(); $('waToken').focus(); };
+$('waHide').onclick = () => { waWanted = false; $('waToken').value = ''; renderRoute(); };
+$('waConnect').onclick = async () => {
+  $('waConnect').disabled = true; $('waConnect').textContent = 'Connecting…';
+  await waDo({action: 'setup', token: $('waToken').value, phone_id: $('waPhoneId').value},
+             w => 'WhatsApp is connected, sending from ' + (w.from || 'your Meta number') + '. Now add the numbers to message.');
+  $('waConnect').disabled = false; $('waConnect').textContent = 'Connect';
+};
+$('waOff').onclick = () => waDo({action: 'off'}, () => 'WhatsApp is off.');
+$('waCopy').onclick = () => saveRecipients('whatsapp', mon.recipients.phones.filter(p => !p.includes('@')));
+$('waAcctSave').onclick = async () => { if (await waDo({action: 'account', waba: $('waAcctId').value}, w => w.ready ? 'Done. Meta has already approved the alert message.' : 'Saved. Waiting for Meta to approve the alert message.')) $('waAcctId').value = ''; };
+$('waCheck').onclick = () => waDo({action: 'refresh'}, w => w.ready ? 'Meta has approved the alert message.' : 'Not approved yet.');
+$('emShow').onclick = () => { emWanted = true; renderRoute(); $('emFrom').focus(); };
+$('emAgain').onclick = () => { emWanted = true; $('emFrom').value = mon.email.from; $('emTo').value = mon.email.to === mon.email.from ? '' : mon.email.to; renderRoute(); };
+async function emailDo(action, done) {
+  try { mon.email = await api('/api/email', {action}); emWanted = false; $('emPass').value = ''; if (done) toast(done); await loadMonitor(); renderRoute(); }
+  catch (e) { toast(e.message, true); }
+}
+$('emHide').onclick = () => { emWanted = false; $('emPass').value = ''; if (mon.email && mon.email.pending) renderRoute(); else emailDo('off'); };
+$('emCancel').onclick = () => emailDo('off');
+$('emConfirm').onclick = () => emailDo('confirm', 'Email is on. Add more addresses to the list if you like.');
+$('routeOff').onclick = () => emailDo('off', 'Email is off.');
+$('emTest').onclick = async () => {
+  $('emTest').disabled = true; $('emTest').textContent = 'Sending…';
+  try {
+    mon.email = await api('/api/email', {action: 'setup', from: $('emFrom').value, password: $('emPass').value, to: $('emTo').value, host: $('emHost').value, port: $('emPort').value});
+    emWanted = false; $('emPass').value = '';
+    toast('Test email sent.'); renderRoute();
+  } catch (e) { toast(e.message, true); }
+  $('emTest').disabled = false; $('emTest').textContent = 'Send a test email';
+};
+
+// ------------------------------------------------------- player activity
+// When each foreign player gives orders (a sign they are online), and the movements they repeat.
+const hh = h => String(h).padStart(2, '0') + ':00';
+function hourRanges(list) {                       // [22,23,0,1] -> "22:00–02:00" (runs past midnight stay whole)
+  const set = new Set(list), out = [];
+  if (!set.size || set.size >= 24) return set.size ? 'all day' : '';
+  let start = 0; while (set.has(start)) start = (start + 1) % 24;
+  let s = null;
+  for (let i = 1; i <= 24; i++) {
+    const h = (start + i) % 24;
+    if (set.has(h)) { if (s === null) s = h; }
+    else if (s !== null) { out.push(`${hh(s)}–${hh(h)}`); s = null; }
+  }
+  return out.join(', ');
+}
+function actChart(p, watched) {
+  const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg'), H = 34, max = Math.max(1, ...p.hours);
+  svg.setAttribute('viewBox', '0 0 240 46'); svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', `Orders by hour of day for ${p.nation}`);
+  const colour = DOT[p.rel] || DOT.none, nowH = new Date().getHours();
+  for (let h = 0; h < 24; h++) {
+    const x = h * 10 + 1, n = p.hours[h];
+    const r = document.createElementNS(ns, 'rect');
+    if (n) {
+      const bh = Math.max(3, n / max * H);
+      r.setAttribute('x', x); r.setAttribute('y', H - bh); r.setAttribute('width', 8); r.setAttribute('height', bh); r.setAttribute('rx', 2);
+      r.setAttribute('fill', colour);
+    } else {                                      // nothing seen: a flat mark, darker if that hour was never watched
+      r.setAttribute('x', x); r.setAttribute('y', H - 1.5); r.setAttribute('width', 8); r.setAttribute('height', 1.5);
+      r.setAttribute('class', 'unw'); if (!watched[h]) r.setAttribute('opacity', '.35');
+    }
+    const t = document.createElementNS(ns, 'title');
+    t.textContent = `${hh(h)}–${hh((h + 1) % 24)}: ${n} order${n === 1 ? '' : 's'} seen` + (watched[h] ? ` (watched on ${watched[h]} day${watched[h] === 1 ? '' : 's'})` : ' (not watched yet)');
+    r.append(t);
+    const hit = document.createElementNS(ns, 'rect');           // bigger hover target than the bar
+    hit.setAttribute('x', h * 10); hit.setAttribute('y', 0); hit.setAttribute('width', 10); hit.setAttribute('height', H + 2); hit.setAttribute('fill', 'transparent');
+    hit.append(t.cloneNode(true));
+    svg.append(r, hit);
+  }
+  const now = document.createElementNS(ns, 'line');
+  now.setAttribute('x1', nowH * 10 + 5); now.setAttribute('x2', nowH * 10 + 5); now.setAttribute('y1', 0); now.setAttribute('y2', H); now.setAttribute('class', 'now');
+  svg.append(now);
+  for (const h of [0, 6, 12, 18]) {
+    const tx = document.createElementNS(ns, 'text');
+    tx.setAttribute('x', h * 10 + 1); tx.setAttribute('y', 45); tx.textContent = hh(h); svg.append(tx);
+  }
+  return svg;
+}
+let actKey = '', actData = null;
+let actDemo = null;
+async function loadActivity() {
+  let d = actDemo;
+  if (!d) try { d = await api('/api/activity'); } catch (e) { return; }
+  const key = JSON.stringify(d);
+  if (key === actKey) return;
+  actKey = key;
+  const list = $('actList'), days = Math.max(0, ...d.watched);
+  list.innerHTML = '';
+  $('actTitle').textContent = 'Players' + (d.players.length ? ` · ${d.players.length}` : '');
+  actData = d;
+  $('actNote').textContent = d.players.length
+    ? `New orders seen per hour of the day (your time) · watched ${days} day${days === 1 ? '' : 's'}`
+    : 'No orders seen yet. Each new order a player gives a unit in your sight shows when they are online.';
+  const order = {war: 0, neutral: 1, none: 1, ally: 2, me: 3};
+  const players = [...d.players].sort((a, b) => (order[a.rel] ?? 1) - (order[b.rel] ?? 1) || b.orders - a.orders);
+  for (const p of players) {
+    const box = el('div', 'act'), who = el('div', 'who');
+    who.append(el('b', '', (p.nation || 'Unknown') + (p.rel === 'me' ? ' (you)' : '')), el('small', '', [p.player, REL_TEXT[p.rel] || ''].filter(Boolean).join(' · ')));
+    box.append(who, el('div', 'meta', `${p.orders} order${p.orders === 1 ? '' : 's'} seen on ${p.days} day${p.days === 1 ? '' : 's'} · last one ${p.last_min < 1 ? 'just now' : etaText(p.last_min) + ' ago'}`));
+    box.append(actChart(p, p.watched || d.watched));
+    const ul = el('ul');
+    if (p.busy) ul.append(el('li', '', `Busiest ${hh(p.busy[0])}–${hh(p.busy[1])} (${p.busy[2]}% of their orders)`));
+    if (p.quiet.length && p.quiet.length < 24) ul.append(el('li', '', `Never seen giving orders ${hourRanges(p.quiet)} (hours watched on 2+ days)`));
+    for (const [a, b, n] of p.shuttles) ul.append(el('li', '', `Shuttles between ${a} and ${b} (${n}×)`));
+    for (const [r, n] of p.routes.filter(([r]) => !p.shuttles.some(([a, b]) => r === `${a} → ${b}` || r === `${b} → ${a}`)).slice(0, 3)) ul.append(el('li', '', `Repeats ${r} (${n}×)`));
+    if (p.dest.length) ul.append(el('li', '', 'Often sends units to ' + p.dest.slice(0, 3).map(([k, n]) => `${k} (${n}×)`).join(', ')));
+    if (ul.children.length) box.append(ul);
+    list.append(box);
+  }
+}
+
+setInterval(() => { if (!document.hidden) loadActivity(); }, 60000);
+
+// ------------------------------------------------------- "Happening now\"
+function targetOf(a) { return a.atk && a.atk[0] && world.byId.get(a.atk[0]) || null; }
+function renderFeed() {
+  if (!world) return;
+  const count = {me: 0, ally: 0, war: 0, neutral: 0, none: 0}, items = [];
+  let blips = 0;
+  fights = [];
+  for (const a of world.armies) {
+    const rel = relOf(a.o);
+    if (a.rc) {
+      blips++;
+      items.push({rank: 1.5, cls: 'warn', a, text: `Radar contact: ${radarText(a)}` + (a.o > 0 && nationOf(a.o) ? ` (probably ${nationOf(a.o)})` : ', country unknown'),
+                  small: [a.loc && 'near ' + a.loc, a.pts && a.pts.length ? `heading for ${a.dest || 'a waypoint'}` : ''].filter(Boolean).join(' · ')});
+      continue;
+    }
+    count[rel]++;
+    const who = rel === 'me' ? 'Your' : (nationOf(a.o) || 'Unknown') + "'s";
+    if (a.atk) {
+      const t = targetOf(a), trel = t ? relOf(t.o) : '';
+      const whom = t ? (trel === 'me' ? 'your ' : (nationOf(t.o) || 'unknown') + "'s ") + unitsText(t) : 'a target out of sight';
+      fights.push(a);
+      items.push({rank: trel === 'me' ? 0 : rel === 'me' ? 1 : 3, cls: trel === 'me' ? 'bad' : rel === 'me' ? 'me' : 'warn', a,
+                  text: `${who} ${unitsText(a)} attacking ${whom}`,
+                  small: [a.loc && 'near ' + a.loc, a.next ? 'next strike in ' + etaText(a.next) : ''].filter(Boolean).join(' · ')});
+    } else if (a.by && a.by.length && !a.by.some(id => world.byId.has(id))) {
+      fights.push(a);
+      items.push({rank: rel === 'me' ? 0 : 4, cls: rel === 'me' ? 'bad' : 'warn', a, text: `${who} ${unitsText(a)} under attack`, small: a.loc ? 'at ' + a.loc : ''});
+    } else if (isForeign(rel) && a.mv && !(a.pts && a.pts.length)) {
+      items.push({rank: rel === 'war' ? 2 : 5, cls: rel === 'war' ? 'bad' : '', a,
+                  text: `${nationOf(a.o) || 'Unknown'} (${REL_TEXT[rel]}): ${unitsText(a)} moving ${a.mv.dir}`,
+                  small: [a.loc && 'near ' + a.loc, 'destination not shown by the game'].filter(Boolean).join(' · ')});
+    } else if (isForeign(rel) && a.pts && a.pts.length) {
+      items.push({rank: rel === 'war' ? 2 : 5, cls: rel === 'war' ? 'bad' : '', a,
+                  text: `${nationOf(a.o) || 'Unknown'} (${REL_TEXT[rel]}): ${unitsText(a)} on the move`,
+                  small: `heading for ${a.dest || 'a waypoint'}` + (a.eta ? `, arrives in ${etaText(a.eta)}` : '')});
+    }
+  }
+  items.sort((x, y) => x.rank - y.rank || (x.a.eta || 1e9) - (y.a.eta || 1e9));
+  $('feedSum').textContent = `${world.armies.length - blips} in sight · ${count.war} at war · ${count.neutral + count.none} neutral`
+                           + (blips ? ` · ${blips} on radar` : '') + ' · '
+                           + (fights.length ? `${fights.length} fighting` : 'no fighting');
+  const chip = $('chip');
+  chip.hidden = !fights.length;
+  chip.innerHTML = '';
+  chip.append(el('b', '', '✹ '), document.createTextNode(`${fights.length} fighting`));
+  $('feedTitle').textContent = 'Now' + (items.length ? ` · ${items.length}` : '');
+  const key = JSON.stringify(items.map(i => [i.a.id, i.text, i.small]));
+  if (key === feedKey) return;
+  feedKey = key;
+  const ul = $('feed');
+  ul.innerHTML = '';
+  if (!items.length) ul.append(el('div', 'empty', 'Nothing foreign moving or fighting in sight.'));
+  for (const it of items.slice(0, 30)) {
+    const li = el('li', it.cls, it.text);
+    if (it.small) li.append(el('small', '', it.small));
+    li.onclick = () => pick(it.a);
+    ul.append(li);
+  }
+}
+function pick(a, kMin) {
+  sel = {type: 'army', ids: [a.id]};
+  renderPanel();
+  goTo(a.x, a.y, kMin || 1.1);
+}
+
+// -------------------------------------------------- details of what was clicked
+function kv(dl, k, v) { if (v == null || v === '') return; dl.append(el('dt', '', k), el('dd', '', String(v))); }
+function bar(frac) {
+  const b = el('div', 'bar'), i = el('i');
+  i.style.width = Math.max(2, Math.min(100, frac * 100)) + '%';
+  i.style.background = frac > 0.6 ? 'var(--ok)' : frac > 0.3 ? '#f0c23b' : 'var(--bad)';
+  b.append(i);
+  return b;
+}
+function statusLine(a) {
+  if (a.atk) {
+    const t = targetOf(a);
+    return ['bad', 'Attacking ' + (t ? `${nationOf(t.o) || 'unknown'}'s ${t.name || unitsText(t)}` : a.atk[1] != null ? 'a target out of your sight' : '')
+                 + (a.next ? ` · next strike in ${etaText(a.next)}` : '')];
+  }
+  if (a.by && a.by.length) return ['bad', 'Under attack'];
+  if (a.st === 'patrolling') return ['go', 'Patrolling' + (a.patrol ? ` · radius ${a.patrol}` : '')];
+  if (a.pts && a.pts.length) return ['go', `${cap(a.st) || 'Moving'} to ${a.dest || 'a waypoint'}` + (a.eta ? ` · arrives in ${etaText(a.eta)} (${clock(a.eta)})` : '')];
+  if (a.mv) return ['go', `Moving ${a.mv.dir}` + (isForeign(relOf(a.o)) ? ' · the game does not show where to' : '')];
+  return ['', (cap(a.st) || 'Waiting') + ' · not moving'];
+}
+function ghostCard(g) {
+  const card = el('div', 'card'), head = el('div', 'chead'), sw = el('i', 'sw'), P = world.players[g.o] || [];
+  sw.style.background = DOT[relOf(g.o)] || DOT.none; sw.style.opacity = '.6';
+  head.append(sw, el('b', '', 'Predicted position'));
+  card.append(head, el('div', 'sub', `${P[0] || 'Unknown country'} · ${REL_TEXT[relOf(g.o)]}`));
+  const plane = g.sure != null && !(g.net && g.net.length) && !/standing still/.test(g.note || '');
+  const still = g.sure != null && !plane;
+  card.append(el('div', 'status ' + ((g.sure != null ? g.sure < 60 : g.unc >= 60) ? 'bad' : ''), `Out of sight for ${etaText(g.ago) || '1m'}. `
+    + (g.sure != null ? `About ${g.sure}% likely to be ${still ? 'still ' : ''}here.` : `${g.unc}% uncertain.`)));
+  for (const u of g.units || []) { const row = el('div', 'unit'); row.append(el('span', '', `${u[1]} × ${u[0]}`)); card.append(row); }
+  card.append(el('div', 'sect', 'The guess'));
+  const dl = el('dl');
+  kv(dl, 'Based on', g.note);
+  kv(dl, 'Home airbase', g.base || null);
+  kv(dl, 'Must land by', g.back_by ? new Date(g.back_by).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) + ' at the latest (fuel)' : null);
+  if (still) {
+    kv(dl, 'Chance it is still here', `about ${g.sure}% (hidden below 40%)`);
+    kv(dl, 'If it moved', g.net && g.net.length ? 'somewhere along the highlighted roads or sea lanes: as far as it could have got since, at the game\'s own speeds for its units' : 'somewhere nearby');
+  } else if (plane) {
+    kv(dl, 'Chance it is here', `about ${g.sure}% (hidden below 40%)`);
+    kv(dl, 'Area', g.err > 0 ? `its patrol circle, ${g.err} across from the marker` : null);
+    if (!(g.else || []).length) kv(dl, 'If not here', g.reach ? `on another mission, anywhere within ${g.reach} of ${g.base || 'its airbase'} (the large dashed circle)` : 'on another mission');
+  } else {
+    kv(dl, 'Probably within', `${g.err} map units of the marker`);
+    kv(dl, 'Uncertainty', `${g.unc}% (hidden at 100%)`);
+  }
+  kv(dl, 'Last seen at', g.last ? `${g.last[0]}, ${g.last[1]}` : null);
+  card.append(dl);
+  if (g.sure != null && (g.else || []).length) {
+    card.append(el('div', 'sect', 'Where else it could be'));
+    const dl2 = el('dl');
+    kv(dl2, 'Here (the marker)', `${g.sure}%`);
+    for (const a of g.else) kv(dl2, cap(a.where), `${a.pct}%`);
+    card.append(dl2);
+  }
+  card.append(el('p', 'note', 'Chances are rough estimates from the last orders. Dropped once your units could see that spot.'));
+  if (0) card.append(el('p', 'note', (plane ? 'An aircraft is either exactly where its last orders put it, or off on a new mission, so this is a chance rather than a distance. The chance is an estimate that drops each hour it is unseen. '
+      : 'Worked out from its last known orders. If its orders changed or it was in a fight, it may be elsewhere. ')
+    + 'The guess is dropped when one of your groups could see that spot.'));
+  const btns = el('div', 'pbtns'), c = el('button', '', 'Centre on map');
+  c.onclick = () => goTo(g.x, g.y, 1.1);
+  btns.append(c); card.append(btns);
+  return card;
+}
+function radarCard(a) {
+  const card = el('div', 'card'), head = el('div', 'chead'), sw = el('i', 'sw'), P = a.o > 0 && world.players[a.o] || null;
+  sw.style.background = P ? DOT[relOf(a.o)] : 'var(--accent)';
+  head.append(sw, el('b', '', 'Radar contact'));
+  card.append(head, el('div', 'sub', P && P[0] ? `Probably ${P[0]} · ${REL_TEXT[relOf(a.o)]}` : 'Country unknown'));
+  card.append(el('div', 'status bad', 'Seen only on radar: your side has not identified what it is.'));
+  card.append(el('div', 'sect', 'Signature'));
+  let dl = el('dl');
+  for (const [kind, size] of a.rc || []) kv(dl, cap(kind), `${size <= 10 ? 'small' : 'large'} (${size})`);
+  card.append(dl, el('div', 'sect', 'Where'));
+  dl = el('dl');
+  kv(dl, a.w === 'air' ? 'In the air over' : a.w === 'sea' ? 'At sea in' : 'In', a.loc);
+  kv(dl, 'Heading for', a.pts && a.pts.length ? a.dest || 'a waypoint' : null);
+  kv(dl, 'Arrives', a.eta ? `in ${etaText(a.eta)} (${clock(a.eta)})` : null);
+  kv(dl, 'Map position', `${a.x}, ${a.y}`);
+  card.append(dl);
+  const btns = el('div', 'pbtns'), c = el('button', '', 'Centre on map');
+  c.onclick = () => goTo(a.x, a.y, 1.1);
+  btns.append(c); card.append(btns);
+  return card;
+}
+function armyCard(a) {
+  if (a.rc) return radarCard(a);
+  const rel = relOf(a.o), P = world.players[a.o] || [], card = el('div', 'card');
+  const head = el('div', 'chead'), sw = el('i', 'sw');
+  sw.style.background = DOT[rel];
+  head.append(sw, el('b', '', a.name || 'Army group'));
+  card.append(head, el('div', 'sub', `${P[0] || 'Unknown country'} · ${REL_TEXT[rel]}` + (P[2] ? ` · ${P[4] ? 'computer' : 'player'} ${P[2]}` : '')));
+  const [cls, text] = statusLine(a);
+  card.append(el('div', 'status ' + cls, text));
+  for (const u of a.u || []) {
+    const row = el('div', 'unit');
+    row.append(el('span', '', `${u[0]} × ${u[1]}`), el('span', 'hp', u[3] != null && u[4] ? `${u[3]} / ${u[4]} HP` : ''));
+    if (u[3] != null && u[4]) row.append(bar(u[3] / u[4]));
+    card.append(row);
+  }
+  card.append(el('div', 'sect', 'Condition'));
+  let dl = el('dl');
+  kv(dl, 'Hit points', a.hp != null ? `${a.hp} / ${a.mhp}` + (a.mhp ? ` (${Math.round(a.hp / a.mhp * 100)}%)` : '') : null);
+  kv(dl, 'Morale', a.mor != null ? a.mor + '%' : null);
+  kv(dl, 'Attack strength', a.str); kv(dl, 'Defence', a.def);
+  kv(dl, 'Kills', a.kills); kv(dl, 'Dug in', a.ent ? 'yes' : 'no');
+  kv(dl, 'Last hit', a.dmg != null ? (a.dmg < 1 ? 'just now' : etaText(a.dmg) + ' ago') : null);
+  card.append(dl, el('div', 'sect', 'Movement'));
+  dl = el('dl');
+  if (a.pts && a.pts.length) {
+    kv(dl, 'Heading for', a.dest || 'a waypoint');
+    kv(dl, 'Arrives', a.eta ? `in ${etaText(a.eta)} (${clock(a.eta)})` : null);
+    const legs = [0, 1, 2].map(m => (a.how || []).filter(h => h === m).length);
+    kv(dl, 'Route', [legs[0] && `${legs[0]} by land`, legs[1] && `${legs[1]} by sea`, legs[2] && `${legs[2]} by air`].filter(Boolean).join(', ') + (a.pts.length > 2 ? ' (legs)' : ''));
+  } else kv(dl, 'Orders', a.st === 'patrolling' ? 'patrolling' : 'none, standing still');
+  kv(dl, 'Speed', a.spd || null);
+  kv(dl, 'Patrol radius', a.patrol || null);
+  card.append(dl, el('div', 'sect', 'Reach'));
+  dl = el('dl');
+  kv(dl, 'Sight', a.sight); kv(dl, 'Detailed sight', a.ds && a.ds !== a.sight ? a.ds : null);
+  if (a.reach) {                                              // aircraft and helicopters
+    kv(dl, 'Strike / patrol circle', a.rng ? `${a.rng} around where it flies` : null);
+    kv(dl, 'Can fly from its airbase', `${a.reach}` + (a.base && a.base[2] ? ` (${a.base[2]})` : ''));
+  } else kv(dl, 'Weapon range', a.rng);
+  kv(dl, 'Anti-air range', a.aa > 0 ? a.aa : null); kv(dl, 'Radar', a.radar > 0 ? a.radar : null);
+  card.append(dl, el('div', 'sect', 'Place'));
+  dl = el('dl');
+  kv(dl, a.w === 'air' ? 'In the air over' : a.w === 'sea' ? 'At sea in' : 'In', a.loc);
+  kv(dl, 'Terrain', a.ter); kv(dl, 'Map position', `${a.x}, ${a.y}`);
+  card.append(dl);
+  const t = targetOf(a);
+  if (t) { const b = el('button', 'link', `Target: ${nationOf(t.o) || 'unknown'}'s ${unitsText(t)} →`); b.onclick = () => pick(t); card.append(b); }
+  for (const id of a.by || []) {
+    const x = world.byId.get(id);
+    if (x) { const b = el('button', 'link', `Attacked by: ${nationOf(x.o) || 'unknown'}'s ${unitsText(x)} →`); b.onclick = () => pick(x); card.append(b); }
+  }
+  const btns = el('div', 'pbtns'), c = el('button', '', 'Centre on map');
+  c.onclick = () => goTo(a.x, a.y, 1.1);
+  btns.append(c);
+  if (rel === 'me' || rel === 'ally') {                       // alert when foreign units come within its sight
+    const mine = spots.find(s => s.army === a.id), w = el('button', mine ? '' : 'primary', mine ? 'Stop watching its sight range' : 'Alert within its sight range');
+    w.onclick = () => {
+      if (mine) { spots = spots.filter(s => s !== mine); if (selected === mine.key) selected = null; }
+      else {
+        const s = {key: 'k' + keyN++, id: null, name: 'Near ' + (a.name || unitsText(a)), enabled: true, world: null, army: a.id, radius: null, dirty: true};
+        spots.push(s); selected = s.key;
+        toast(`Watching ${a.sight} around this group. Press Save changes to start.`);
+      }
+      renderAll(); renderPanel();
+    };
+    btns.append(w);
+  }
+  card.append(btns);
+  return card;
+}
+function provCard() {
+  const p = geo.land[sel.i], owner = world ? world.owners[sel.i] : 0, rel = relOf(owner), P = world && world.players[owner] || [], d = sel.data;
+  const card = el('div', 'card'), head = el('div', 'chead'), sw = el('i', 'sw');
+  sw.style.background = DOT[rel];
+  head.append(sw, el('b', '', p.n.trim()));
+  card.append(head, el('div', 'sub', `${P[0] || 'No owner'} · ${REL_TEXT[rel]}` + (P[2] ? ` · ${P[4] ? 'computer' : 'player'} ${P[2]}` : '') + (P[6] ? ` · coalition ${P[6]}` : '')));
+  if (!d) { card.append(el('div', 'status', 'Loading…')); return card; }
+  if (d.error) { card.append(el('div', 'status bad', d.error)); return card; }
+  let dl = el('dl');
+  kv(dl, 'Kind', [d.state || d.type, d.capital ? 'capital' : ''].filter(Boolean).join(', '));
+  kv(dl, 'Terrain', d.terrain);
+  kv(dl, 'Morale', d.morale != null ? d.morale + '%' : null);
+  kv(dl, 'Population', d.pop != null ? d.pop.toLocaleString() : null);
+  kv(dl, 'Victory points', d.vp || null);
+  kv(dl, 'Produces', d.res ? `${d.res.toLocaleString()} ${d.resource || ''} a day`.replace('  ', ' ') : null);
+  kv(dl, 'Money', d.tax ? `${d.tax.toLocaleString()} a day` : null);
+  kv(dl, 'Coast', d.coastal ? 'yes' : 'no'); kv(dl, 'Airfield', d.airfield ? 'yes' : null);
+  kv(dl, 'Last battle', d.lastBattle != null ? (d.lastBattle < 60 * 48 ? etaText(Math.max(1, d.lastBattle)) + ' ago' : Math.round(d.lastBattle / 1440) + ' days ago') : null);
+  kv(dl, 'Country points', P[3] ? P[3] + ' victory points' : null);
+  card.append(dl);
+  if (d.buildings && d.buildings.length) {
+    card.append(el('div', 'sect', 'Buildings'));
+    dl = el('dl');
+    for (const b of d.buildings) kv(dl, b[0] + (b[1] > 1 ? ` (level ${b[1]})` : ''), b[3] ? `being built, ${b[2]}%` : b[2] != null && b[2] < 100 ? `damaged, ${b[2]}%` : 'working');
+    card.append(dl);
+  }
+  const here = world ? world.armies.filter(a => a.loc === p.n.trim()) : [];
+  if (here.length) {
+    card.append(el('div', 'sect', 'Groups here'));
+    for (const a of here) { const b = el('button', 'link', `${nationOf(a.o) || 'Unknown'}: ${unitsText(a)} →`); b.onclick = () => pick(a, view.k); card.append(b); }
+  }
+  return card;
+}
+function renderPanel() {
+  const body = $('panelBody');
+  if (!sel) { $('panel').hidden = true; return; }
+  const scroll = body.scrollTop;
+  body.innerHTML = '';
+  if (sel.type === 'country') {
+    body.append(countryCard(sel.o));
+  } else if (sel.type === 'ghost') {
+    const g = world && (world.ghosts || []).find(x => x.id === sel.id), live = world && world.byId.get(sel.id);
+    if (live) { sel = {type: 'army', ids: [live.id]}; return renderPanel(); }           // it is in sight again
+    if (!g) body.append(el('p', 'ptitle', 'Prediction dropped'), el('p', 'note', 'That guess became too uncertain, or one of your groups can see that spot and it is not there.'));
+    else body.append(ghostCard(g));
+  } else if (sel.type === 'army') {
+    const list = sel.ids.map(id => world && world.byId.get(id)).filter(Boolean);
+    if (!list.length) body.append(el('p', 'ptitle', 'No longer in sight'), el('p', 'note', 'That group has moved out of view of your side, or no longer exists.'));
+    if (list.length > 1) body.append(el('div', 'ptitle', `${list.length} groups on this spot`));
+    for (const a of list) body.append(armyCard(a));
+  } else {
+    body.append(provCard());
+    if (!sel.data || Date.now() - sel.at > 20000) {
+      const s = sel;
+      if (!s.busy) {
+        s.busy = true;
+        api('/api/province?id=' + geo.land[s.i].id).then(d => { s.data = d; }, e => { s.data = s.data || {error: e.message}; })
+          .then(() => { s.busy = false; s.at = Date.now(); if (sel === s) renderPanel(); });
+      }
+    }
+  }
+  $('panel').hidden = false;
+  body.scrollTop = scroll;
+}
+function closePanel() { sel = null; $('panel').hidden = true; render(); }
+$('panelClose').onclick = closePanel;
+
+// ------------------------------------------------- moving the map, drawing boxes
+function inRing(ring, x, y) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {
+    const xi = ring[i], yi = ring[i + 1], xj = ring[j], yj = ring[j + 1];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function provAt(wx, wy) {
+  wx = wrapX(wx);
+  for (let i = 0; i < geo.land.length; i++) {
+    const p = geo.land[i];
+    if (wx < p.box[0] || wx > p.box[2] || wy < p.box[1] || wy > p.box[3]) continue;
+    if (p.b.some(ring => inRing(ring, wx, wy))) return i;
+  }
+  return -1;
+}
+function markAt(mx, my, reach) {
+  let best = null, bd = 1e9;
+  for (const m of marks) {
+    const hw = m.w / 2, hh = m.h / 2;
+    const d = Math.hypot(Math.max(0, Math.abs(mx - m.x) - hw), Math.max(0, Math.abs(my - m.y) - hh));
+    if (d <= reach && d <= bd) { bd = d; best = m; }             // on a tie the one drawn last (on top) wins
+  }
+  return best;
+}
+// a click or tap that was not a drag: show everything about the unit or province under it
+function ghostAt(mx, my, reach) {
+  let best = null, bd = 1e9;
+  for (const gm of ghostMarks) { const d = Math.hypot(mx - gm.x, my - gm.y) - gm.r; if (d <= reach && d < bd) { bd = d; best = gm; } }
+  return best;
+}
+const ghostWho = g => `${nationOf(g.o) || 'Unknown'} (${REL_TEXT[relOf(g.o)]}): ` + ((g.units || []).map(u => `${u[1]} ${u[0]}`).join(', ') || 'units');
+function clickAt(ev, touch, onBox) {
+  const r = $('map').getBoundingClientRect(), mx = ev.clientX - r.left, my = ev.clientY - r.top;
+  const m = markAt(mx, my, touch ? 16 : 7);
+  if (m) {
+    const under = marks.filter(o => Math.abs(o.x - m.x) < (o.w + m.w) / 4 && Math.abs(o.y - m.y) < (o.h + m.h) / 4);
+    sel = {type: 'army', ids: under.reverse().flatMap(o => o.list.map(a => a.id))};
+    renderPanel();
+    const sh = sheetHeight();
+    if (sh && my > r.height - sh - 30) { view.y += (my - (r.height - sh) / 2) / view.k; clampView(); }
+    render();
+    return;
+  }
+  const gm = ghostAt(mx, my, touch ? 16 : 7);
+  if (gm) { sel = {type: 'ghost', id: gm.g.id}; renderPanel(); render(); return; }
+  if (onBox) return;
+  const i = provAt(view.x + (mx - r.width / 2) / view.k, view.y + (my - r.height / 2) / view.k);
+  if (i >= 0) { sel = {type: 'prov', i, data: null, at: 0}; renderPanel(); render(); }
+  else if (sel) closePanel();
+}
+function startPinch() {
+  const [a, b] = [...pointers.values()], r = $('map').getBoundingClientRect();
+  const mx = (a[0] + b[0]) / 2 - r.left, my = (a[1] + b[1]) / 2 - r.top;
+  if (drag && drag.s) { drag.s.world = drag.orig; }           // a second finger cancels moving a box
+  drag = {type: 'pinch', d0: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, k0: view.k,
+          wx: view.x + (mx - r.width / 2) / view.k, wy: view.y + (my - r.height / 2) / view.k};
+}
+function movePinch() {
+  const [a, b] = [...pointers.values()], r = $('map').getBoundingClientRect();
+  const mx = (a[0] + b[0]) / 2 - r.left, my = (a[1] + b[1]) / 2 - r.top;
+  view.k = drag.k0 * Math.hypot(a[0] - b[0], a[1] - b[1]) / drag.d0;
+  clampView();
+  view.x = drag.wx - (mx - r.width / 2) / view.k; view.y = drag.wy - (my - r.height / 2) / view.k;
+  clampView(); render();
+}
+surface.addEventListener('pointerdown', ev => {
+  if (!geo || (ev.pointerType === 'mouse' && ev.button)) return;
+  const touch = ev.pointerType === 'touch';
+  pointers.set(ev.pointerId, [ev.clientX, ev.clientY]);
+  try { surface.setPointerCapture(ev.pointerId); } catch (e) { /* not a real pointer */ }
+  $('tip').hidden = true;
+  ev.preventDefault();
+  if (pointers.size === 2) { startPinch(); return; }
+  if (pointers.size > 2) return;
+  const [wx, wy] = toWorld(ev), id = ev.pointerId, cx = ev.clientX, cy = ev.clientY;
+  if (mode) { drag = {type: 'new', id, touch, cx, cy, x0: wx, y0: wy, rect: null}; return; }
+  const box = ev.target.closest('.box');
+  const s = box && byKey(box.dataset.key);
+  if (!s || (touch && s.key !== selected)) {                  // empty map (or, by finger, a box not chosen yet): slide the map
+    drag = {type: 'pan', id, touch, cx, cy, x0: view.x, y0: view.y, moved: false, tapBox: s ? s.key : null};
+    surface.classList.add('panning');
+    return;
+  }
+  const corner = ev.target.dataset.corner;
+  selected = s.key;
+  drag = {type: corner ? 'resize' : 'move', corner, id, touch, cx, cy, s, x0: wx, y0: wy, orig: [...s.world], moved: false};
+  renderAll();
+});
+window.addEventListener('pointermove', ev => {
+  if (!geo) return;
+  if (pointers.has(ev.pointerId)) pointers.set(ev.pointerId, [ev.clientX, ev.clientY]);
+  if (!drag) { if (ev.pointerType !== 'touch') hover(ev); return; }
+  if (drag.type === 'pinch') { if (pointers.size >= 2) movePinch(); return; }
+  if (drag.id !== ev.pointerId) return;
+  if (!drag.moved && Math.hypot(ev.clientX - drag.cx, ev.clientY - drag.cy) > (drag.touch ? 8 : 3)) drag.moved = true;
+  if (drag.type === 'pan') {
+    if (!drag.moved) return;
+    view.x = drag.x0 - (ev.clientX - drag.cx) / view.k; view.y = drag.y0 - (ev.clientY - drag.cy) / view.k;
+    clampView(); render();
+    return;
+  }
+  const [wx, wy] = toWorld(ev);
+  if (drag.type === 'new') {
+    drag.rect = [Math.min(drag.x0, wx), Math.max(0, Math.min(drag.y0, wy)), Math.abs(wx - drag.x0), Math.abs(wy - drag.y0)];
+  } else if (!drag.moved) return;
+  else if (drag.type === 'move') {
+    const [x, y, w, h] = drag.orig;
+    drag.s.world = [x + wx - drag.x0, Math.max(0, Math.min(geo.h - h, y + wy - drag.y0)), w, h];
+  } else {
+    const [x, y, w, h] = drag.orig;
+    let x1 = x, y1 = y, x2 = x + w, y2 = y + h;
+    const px = x + (wx - drag.x0) + (drag.corner.includes('w') ? 0 : w), py = y + (wy - drag.y0) + (drag.corner.includes('n') ? 0 : h);
+    if (drag.corner.includes('w')) x1 = Math.min(px, x2 - MIN_SIZE); else x2 = Math.max(px, x1 + MIN_SIZE);
+    if (drag.corner.includes('n')) y1 = Math.max(0, Math.min(py, y2 - MIN_SIZE)); else y2 = Math.min(geo.h, Math.max(py, y1 + MIN_SIZE));
+    drag.s.world = [x1, y1, x2 - x1, y2 - y1];
+  }
+  renderBoxes();
+});
+function endPointer(ev, cancelled) {
+  pointers.delete(ev.pointerId);
+  if (!drag) return;
+  if (drag.type === 'pinch') {
+    if (pointers.size >= 2) return;
+    if (pointers.size === 1) {                                 // one finger left: it carries on sliding the map
+      const [id, p] = [...pointers.entries()][0];
+      drag = {type: 'pan', id, touch: true, cx: p[0], cy: p[1], x0: view.x, y0: view.y, moved: true};
+    } else { drag = null; surface.classList.remove('panning'); renderAll(); }
+    return;
+  }
+  if (drag.id !== ev.pointerId) return;
+  const d = drag;
+  drag = null;
+  surface.classList.remove('panning');
+  const tidy = r => [Math.round(wrapX(r[0]) * 10) / 10, Math.round(r[1] * 10) / 10, Math.round(r[2] * 10) / 10, Math.round(r[3] * 10) / 10];
+  if (cancelled) { if (d.s) d.s.world = d.orig; renderAll(); return; }
+  if (d.type === 'pan') {
+    if (d.moved) return;
+    if (d.tapBox) selected = d.tapBox; else if (selected) selected = null;
+    renderAll();
+    clickAt(ev, d.touch, !!d.tapBox);
+    return;
+  }
+  if (d.type === 'new') {
+    // a plain click (or a tiny drag) drops a default-sized box centred there
+    const half = 60 / Math.max(0.5, Math.min(2, view.k));
+    const rect = d.rect && d.rect[2] >= MIN_SIZE && d.rect[3] >= MIN_SIZE ? d.rect : [d.x0 - half, Math.max(0, d.y0 - half), half * 2, half * 2];
+    const s = {key: 'k' + keyN++, id: null, name: 'Spot ' + (spots.length + 1), enabled: true, world: tidy(rect), dirty: true};
+    spots.push(s);
+    selected = s.key; mode = null;
+    renderAll();
+    const inp = document.querySelector(`#list li[data-key="${s.key}"] .name`);
+    if (inp && !d.touch) { inp.focus(); inp.select(); }       // on a phone the keyboard would cover the map
+  } else {
+    d.s.world = tidy(d.s.world);
+    if (JSON.stringify(d.s.world) !== JSON.stringify(d.orig)) d.s.dirty = true;
+    renderAll();
+    if (!d.moved) clickAt(ev, d.touch, true);
+  }
+}
+window.addEventListener('pointerup', ev => endPointer(ev, false));
+window.addEventListener('pointercancel', ev => endPointer(ev, true));
+function zoomAt(factor, cx, cy) {
+  const [W, H] = size();
+  if (cx === undefined) { cx = W / 2; cy = H / 2; }
+  const wx = view.x + (cx - W / 2) / view.k, wy = view.y + (cy - H / 2) / view.k;
+  view.k *= factor; clampView();
+  view.x = wx - (cx - W / 2) / view.k; view.y = wy - (cy - H / 2) / view.k;
+  clampView(); render();
+}
+surface.addEventListener('wheel', ev => {
+  if (!geo) return;
+  ev.preventDefault();
+  const r = $('map').getBoundingClientRect();
+  zoomAt(Math.exp(-ev.deltaY * (ev.ctrlKey ? 0.01 : 0.0018)), ev.clientX - r.left, ev.clientY - r.top);
+}, {passive: false});
+surface.addEventListener('dblclick', ev => {
+  if (!geo || mode) return;
+  const r = $('map').getBoundingClientRect();
+  zoomAt(1.8, ev.clientX - r.left, ev.clientY - r.top);
+});
+let gestureK = 0;                                             // trackpad pinch in Safari on a Mac
+surface.addEventListener('gesturestart', ev => { ev.preventDefault(); gestureK = view.k; });
+surface.addEventListener('gesturechange', ev => {
+  ev.preventDefault();
+  if (!geo || pointers.size || !gestureK) return;
+  const r = $('map').getBoundingClientRect();
+  zoomAt(gestureK * ev.scale / view.k, ev.clientX - r.left, ev.clientY - r.top);
+});
+function hover(ev) {
+  const tip = $('tip'), r = $('map').getBoundingClientRect();
+  const mx = ev.clientX - r.left, my = ev.clientY - r.top;
+  if (mx < 0 || my < 0 || mx > r.width || my > r.height || !ev.target.closest || !ev.target.closest('#surface')) { tip.hidden = true; return; }
+  let text = '';
+  const m = markAt(mx, my, 7);
+  if (m) {
+    if (m.radar) { tip.textContent = 'Radar contact: ' + radarText(m.list[0]) + (m.o > 0 && nationOf(m.o) ? ` (probably ${nationOf(m.o)})` : ', country unknown') + ' · click for more';
+                   tip.hidden = false; tip.style.left = Math.max(4, Math.min(r.width - 240, mx + 14)) + 'px'; tip.style.top = (my + 18) + 'px'; return; }
+    const a = m.list[0], also = marks.filter(o => o !== m && Math.abs(o.x - m.x) < (o.w + m.w) / 4 && Math.abs(o.y - m.y) < (o.h + m.h) / 4).length;
+    text = `${nationOf(m.o) || 'Unknown'} (${REL_TEXT[relOf(m.o)]}): ` + (m.list.length > 1 ? `${m.list.length} groups` : unitsText(a)) + (also ? ` (+${also} other countr${also > 1 ? 'ies' : 'y'} here)` : '')
+         + ` — ${statusLine(a)[1]} · click for everything`;
+  } else if (ghostAt(mx, my, 7)) {
+    const g = ghostAt(mx, my, 7).g;
+    text = `Predicted: ${ghostWho(g)} — not seen for ${etaText(g.ago) || '1m'}, ` + (g.sure != null ? `${g.sure}% likely here` : `${g.unc}% uncertain`) + ' · click for more';
+  } else if (!ev.target.closest('.box')) {
+    const i = provAt(view.x + (mx - r.width / 2) / view.k, view.y + (my - r.height / 2) / view.k);
+    if (i >= 0) {
+      const owner = world ? world.owners[i] : 0;
+      text = geo.land[i].n.trim() + (nationOf(owner) ? ` · ${nationOf(owner)} (${REL_TEXT[relOf(owner)]})` : '');
+    }
+  }
+  if (!text) { tip.hidden = true; return; }
+  tip.textContent = text; tip.hidden = false;
+  tip.style.left = Math.max(4, Math.min(r.width - 240, mx + 14)) + 'px'; tip.style.top = (my + 18) + 'px';
+}
+surface.addEventListener('pointerleave', ev => { if (ev.pointerType !== 'touch') $('tip').hidden = true; });
+
+// ------------------------------------------------------------- list events
+$('list').addEventListener('click', ev => {
+  const li = ev.target.closest('li');
+  const s = li && byKey(li.dataset.key);
+  if (!s) return;
+  if (ev.target.closest('.del')) {
+    spots = spots.filter(x => x !== s);
+    if (selected === s.key) selected = null;
+    renderAll();
+  } else if (ev.target.closest('.go')) {
+    selected = s.key;
+    const c = ringOf(s), [x, y, w, h] = s.world || [c[0] - c[2], c[1] - c[2], c[2] * 2, c[2] * 2];
+    fit(x - w, y - h, x + 2 * w, y + 2 * h);
+    renderList();
+    $('stage').scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  } else if (selected !== s.key && !ev.target.closest('input')) {
+    selected = s.key;
+    renderAll();
+  } else if (selected !== s.key) {              // clicked into an input: select without rebuilding the list
+    selected = s.key;
+    for (const x of document.querySelectorAll('#list li')) x.classList.toggle('sel', x === li);
+    renderBoxes();
+  }
+});
+$('list').addEventListener('input', ev => {
+  const li = ev.target.closest('li');
+  const s = li && byKey(li.dataset.key);
+  if (!s) return;
+  if (ev.target.classList.contains('name')) s.name = ev.target.value;
+  if (ev.target.classList.contains('en')) s.enabled = ev.target.checked;
+  renderBoxes(); renderStatuses(); renderButtons();
+});
+
+// ------------------------------------------------------------------ buttons
+function setFull(on) {
+  document.body.classList.toggle('full', on);
+  const d = document.documentElement;
+  try {                                                       // real full screen where the browser has it (an iPhone does not)
+    if (on) { const f = d.requestFullscreen || d.webkitRequestFullscreen; const p = f && f.call(d); if (p && p.catch) p.catch(() => {}); }
+    else if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  } catch (e) { /* the window-filling map still works */ }
+  $('btnFull').title = on ? 'Leave full screen' : 'Full screen';
+  setTimeout(() => { if (geo) { clampView(); render(); } }, 60);
+}
+for (const name of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(name, () => {
+  if (!(document.fullscreenElement || document.webkitFullscreenElement) && document.body.classList.contains('full')) setFull(false);
+});
+$('btnFull').onclick = () => setFull(!document.body.classList.contains('full'));
+// ---- motion: the game shows where enemy groups are, not where they are going, so the page works out
+// which way each group is moving from its recent positions (shown as a small arrow on its marker)
+const seenAt = new Map();                        // id -> [[x, y, ms], ...] last few positions
+function noteMotion() {
+  const now = Date.now();
+  for (const a of world.armies) {
+    const h = seenAt.get(a.id) || [];
+    const last = h[h.length - 1];
+    if (!last || last[0] !== a.x || last[1] !== a.y) h.push([a.x, a.y, now]);
+    while (h.length > 6 || (h.length > 1 && now - h[0][2] > 5 * 60000)) h.shift();
+    seenAt.set(a.id, h);
+    a.mv = null;
+    if (h.length >= 2 && !(a.pts && a.pts.length) && now - h[h.length - 1][2] < 90000) {
+      const [x0, y0, t0] = h[0], [x1, y1, t1] = h[h.length - 1], d = Math.hypot(x1 - x0, y1 - y0);
+      if (d >= 2 && t1 > t0) {
+        const deg = (Math.atan2(x1 - x0, -(y1 - y0)) * 180 / Math.PI + 360) % 360;
+        a.mv = {deg, v: d / ((t1 - t0) / 60000), dir: ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'][Math.round(deg / 45) % 8]};
+      }
+    }
+  }
+  for (const id of [...seenAt.keys()]) if (!world.byId || !world.byId.has(id)) { if (now - (seenAt.get(id).slice(-1)[0] || [0, 0, 0])[2] > 10 * 60000) seenAt.delete(id); }
+}
+
+// ---- search: a player or country
+let findKey = '';
+function fillFind() {
+  if (!world) return;
+  const key = JSON.stringify(Object.keys(world.players));
+  if (key === findKey) return;
+  findKey = key;
+  const dl = $('findList'); dl.innerHTML = '';
+  for (const [id, P] of Object.entries(world.players)) {
+    if (!P[0]) continue;
+    const o = document.createElement('option'); o.value = P[0] + (P[2] ? ` · ${P[2]}` : ''); dl.append(o);
+  }
+}
+function findCountry(text) {
+  const q = String(text || '').toLowerCase().split(' · ')[0].trim();
+  if (!q || !world) return null;
+  const all = Object.entries(world.players).filter(([, P]) => P[0]);
+  const hit = all.find(([, P]) => P[0].toLowerCase() === q || (P[2] || '').toLowerCase() === q)
+           || all.find(([, P]) => P[0].toLowerCase().startsWith(q) || (P[2] || '').toLowerCase().startsWith(q))
+           || all.find(([, P]) => P[0].toLowerCase().includes(q) || (P[2] || '').toLowerCase().includes(q));
+  return hit ? +hit[0] : null;
+}
+function showCountry(o) {
+  sel = {type: 'country', o};
+  const boxes = geo.land.filter((p, i) => world.owners[i] === o).map(p => [p.box[0], p.box[1], p.box[2] - p.box[0], p.box[3] - p.box[1]])
+    .concat(world.armies.filter(a => a.o === o).map(a => [a.x - 10, a.y - 10, 20, 20]));
+  if (boxes.length) fitRects(boxes, 80, 700, 450);
+  renderPanel(); render();
+}
+$('find').addEventListener('change', () => { const o = findCountry($('find').value); if (o != null) showCountry(o); else if ($('find').value) toast('No player or country by that name.', true); });
+$('find').addEventListener('keydown', ev => { if (ev.key === 'Enter') { const o = findCountry($('find').value); if (o != null) { showCountry(o); $('find').blur(); } } });
+function countryCard(o) {
+  const P = world.players[o] || [], rel = relOf(o), card = el('div', 'card'), head = el('div', 'chead'), sw = el('i', 'sw');
+  sw.style.background = DOT[rel] || DOT.none;
+  head.append(sw, el('b', '', P[0] || 'Unknown country'));
+  card.append(head, el('div', 'sub', [P[2] && `${P[4] ? 'computer' : 'player'} ${P[2]}`, REL_TEXT[rel], P[6] && `coalition ${P[6]}`].filter(Boolean).join(' · ')));
+  const provs = world.owners.filter(x => x === o).length, groups = world.armies.filter(a => a.o === o && !a.rc);
+  const dl = el('dl');
+  kv(dl, 'Provinces', provs || null);
+  kv(dl, 'Victory points', P[3] || null);
+  kv(dl, 'Groups in sight', groups.length || 'none');
+  const kinds = {};
+  for (const a of groups) for (const x of a.u || []) kinds[x[1]] = (kinds[x[1]] || 0) + x[0];
+  kv(dl, 'Units in sight', Object.entries(kinds).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, n]) => `${n} ${k}`).join(', ') || null);
+  kv(dl, 'Fighting now', groups.filter(isFighting).length || null);
+  const act = actData && actData.players.find(x => x.o === o);
+  if (act) {
+    kv(dl, 'Orders seen', `${act.orders}, last ${act.last_min < 1 ? 'just now' : etaText(act.last_min) + ' ago'}`);
+    if (act.busy) kv(dl, 'Most active', `${hh(act.busy[0])}–${hh(act.busy[1])}`);
+  }
+  card.append(dl);
+  const btns = el('div', 'pbtns'), z = el('button', '', 'Show all on map'), ac = el('button', '', 'Activity');
+  z.onclick = () => showCountry(o);
+  ac.onclick = () => showTab('players');
+  btns.append(z); if (act) btns.append(ac);
+  card.append(btns);
+  return card;
+}
+
+// ---- sidebar tabs, settings drawer, help
+function showTab(name) {
+  for (const b of document.querySelectorAll('.tabs button')) b.classList.toggle('on', b.dataset.tab === name);
+  for (const t of document.querySelectorAll('.tab')) t.hidden = t.dataset.tab !== name;
+  try { localStorage.setItem('conalert.tab', name); } catch (e) { /* private window */ }
+}
+for (const b of document.querySelectorAll('.tabs button')) b.onclick = () => showTab(b.dataset.tab);
+try { const t = localStorage.getItem('conalert.tab'); if (t) showTab(t); } catch (e) { /* private window */ }
+$('btnSettings').onclick = () => { $('drawer').hidden = false; };
+$('drawerClose').onclick = () => { $('drawer').hidden = true; };
+$('btnHelp').onclick = () => { const h = $('help'); h.hidden = !h.hidden; $('btnHelp').setAttribute('aria-expanded', String(!h.hidden)); };
+$('chip').onclick = () => { if (fights.length) pick(fights[fightAt++ % fights.length]); };
+$('btnAdd').onclick = () => { mode = mode ? null : {add: true}; renderButtons(); };
+$('btnZoomIn').onclick = () => zoomAt(1.5);
+$('btnZoomOut').onclick = () => zoomAt(1 / 1.5);
+$('btnWhole').onclick = () => geo && fit(0, 0, geo.w, geo.h);
+$('btnSpots').onclick = () => geo && fitSpots();
+$('btnHome').onclick = () => geo && fitHome();
+for (const [id, key] of [['chkMove', 'move'], ['chkSight', 'sight'], ['chkRange', 'range'], ['chkNames', 'names'], ['chkGhosts', 'ghosts']]) {
+  $(id).checked = show[key];
+  $(id).onchange = ev => {
+    show[key] = ev.target.checked;
+    try { localStorage.setItem('conalert.show', JSON.stringify(show)); } catch (e) { /* private window */ }
+    render();
+  };
+}
+$('btnDiscard').onclick = () => loadWorld(true).then(renderAll);
+$('btnSave').onclick = async () => {
+  $('btnSave').disabled = true;
+  try {
+    const r = await api('/api/spots', {spots: spots.filter(s => s.world || s.army).map(s => ({id: s.id, name: s.name, enabled: s.enabled, world: s.world, army: s.army, radius: s.radius}))});
+    toast(`Saved ${r.count} spot${r.count === 1 ? '' : 's'}. ` + (mon && mon.running
+          ? `The monitor picks this up within ${mon.interval} seconds.` : 'The monitor is stopped; press Start monitor.'));
+    await loadWorld(true);
+    renderAll();
+  } catch (e) { toast(e.message, true); renderButtons(); }
+};
+$('btnMon').onclick = async () => {
+  $('btnMon').disabled = true;
+  try {
+    mon = await api('/api/monitor', {action: mon && mon.running ? 'stop' : 'start'});
+    toast('Monitor ' + mon.message); renderMonitor();
+  } catch (e) { toast(e.message, true); }
+  $('btnMon').disabled = false;
+};
+$('btnTest').onclick = async () => {
+  $('btnTest').disabled = true;
+  try { toast((await api('/api/test', {})).message); } catch (e) { toast(e.message, true); }
+  $('btnTest').disabled = false;
+};
+$('btnShow').onclick = async () => {          // the same button shows it and hides it again
+  try {
+    const r = await api('/api/viewer', {action: 'toggle'});
+    $('btnShow').textContent = r.shown ? 'Hide game window' : 'Show game window';
+    toast(r.shown ? 'The game window is on screen. Press this button again, or Esc in that window, to hide it.' : 'The game window is hidden again.');
+  } catch (e) { toast(e.message, true); }
+};
+window.addEventListener('keydown', ev => {
+  const typing = ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName);
+  if (ev.key === 'Escape') {
+    if (mode) { mode = null; drag = null; renderAll(); }
+    else if (sel) closePanel();
+    else if (document.body.classList.contains('full')) setFull(false);
+  }
+  if ((ev.key === 'Delete' || ev.key === 'Backspace') && selected && !typing) {
+    spots = spots.filter(s => s.key !== selected); selected = null; renderAll(); ev.preventDefault();
+  }
+});
+window.addEventListener('resize', () => { if (geo) { clampView(); render(); } });
+if (window.ResizeObserver) new ResizeObserver(() => { if (geo) { clampView(); render(); } }).observe($('stage'));
+window.addEventListener('beforeunload', ev => { if (isDirty()) ev.preventDefault(); });
+window.addEventListener('error', ev => api('/api/clientlog', {error: ev.message, at: ev.lineno}).catch(() => {}));
+window.addEventListener('unhandledrejection', ev => api('/api/clientlog', {error: String(ev.reason && ev.reason.message || ev.reason)}).catch(() => {}));
+
+// ----------------------------------------------------------------- refresh
+setInterval(() => { if (!document.hidden && !drag) loadWorld(); }, 5000);
+setInterval(() => { if (!document.hidden) loadMonitor(); }, 5000);
+
+// Built-in check of the map and the drawing code (open the page with ?selftest=1): reports to the
+// server log what loaded, then simulates adding, moving, resizing and deleting a spot with the
+// mouse, and pinching, tapping a unit and sliding with fingers. Saves nothing.
+async function selftest() {
+  const res = {};
+  let step = 'start';
+  const stuck = setTimeout(() => api('/api/clientlog', {selftestStuckAt: step, sofar: Object.keys(res)}).catch(() => {}), 25000);
+  try {
+    const [W, H] = size();
+    view = {x: 9500, y: 3700, k: 1}; clampView(); render();
+    await new Promise(r => setTimeout(r, 400));
+    const c = $('map'), px = c.getContext('2d').getImageData(0, 0, c.width, c.height).data, seen = new Set();
+    for (let i = 0; i < px.length; i += 4 * 997) seen.add(px[i] >> 4 << 8 | px[i + 1] >> 4 << 4 | px[i + 2] >> 4);
+    res.loaded = {provinces: geo.land.length, armies: world ? world.armies.length : null, countries: world ? Object.keys(world.players).length : null,
+                  edges: geo.edges.n, shared: geo.edges.b.filter(b => b >= 0).length, mapColoursOnCanvas: seen.size, spots: spots.length,
+                  boxes: document.querySelectorAll('.box').length, fights: fights.length, feed: document.querySelectorAll('#feed li').length};
+    const r = c.getBoundingClientRect();
+    const fire = (target, type, x, y, o) => target.dispatchEvent(new PointerEvent(type, Object.assign({clientX: r.left + x, clientY: r.top + y, bubbles: true, button: 0}, o)));
+    const n0 = spots.length;
+    $('btnAdd').click();
+    fire(surface, 'pointerdown', W / 2 - 100, H / 2 - 80); fire(window, 'pointermove', W / 2 + 100, H / 2 + 80); fire(window, 'pointerup', W / 2 + 100, H / 2 + 80);
+    const s = spots[spots.length - 1];
+    res.add = [spots.length === n0 + 1, s.world];                       // expect [9400,3620,200,160]
+    fire(document.querySelector(`.box[data-key="${s.key}"]`), 'pointerdown', W / 2, H / 2);
+    fire(window, 'pointermove', W / 2 + 50, H / 2 + 20); fire(window, 'pointerup', W / 2 + 50, H / 2 + 20);
+    res.move = s.world;                                                 // expect [9450,3640,200,160]
+    fire(document.querySelector('.box.sel .h.se'), 'pointerdown', W / 2 + 150, H / 2 + 100);
+    fire(window, 'pointermove', W / 2 + 180, H / 2 + 140); fire(window, 'pointerup', W / 2 + 180, H / 2 + 140);
+    res.resize = s.world;                                               // expect [9450,3640,230,200]
+    let before = view.x;
+    fire($('map'), 'pointerdown', 40, 40); fire(window, 'pointermove', 140, 40); fire(window, 'pointerup', 140, 40);
+    res.pan = Math.round(before - view.x);                              // expect 100
+    res.dirty = [isDirty(), !$('btnSave').disabled, document.querySelectorAll('#list li').length];
+    // fingers: a box that is not chosen slides the map instead of moving
+    selected = null; renderAll();
+    const T1 = {pointerId: 11, pointerType: 'touch'}, T2 = {pointerId: 12, pointerType: 'touch'};
+    const boxEl = document.querySelector(`.box[data-key="${s.key}"]`), br = boxEl.getBoundingClientRect(), bx = br.left - r.left + br.width / 2, by = br.top - r.top + br.height / 2;
+    const w0 = JSON.stringify(s.world); before = view.x;
+    fire(boxEl, 'pointerdown', bx, by, T1); fire(window, 'pointermove', bx + 60, by, T1); fire(window, 'pointerup', bx + 60, by, T1);
+    res.touchBoxSlides = [JSON.stringify(s.world) === w0, Math.round(before - view.x)];     // expect [true, 60]
+    // two fingers moving apart to double the distance: zoom doubles
+    const k0 = view.k;
+    fire($('map'), 'pointerdown', W / 2 - 50, H / 2, T1); fire($('map'), 'pointerdown', W / 2 + 50, H / 2, T2);
+    fire(window, 'pointermove', W / 2 + 150, H / 2, T2); fire(window, 'pointermove', W / 2 - 50, H / 2, T1);
+    fire(window, 'pointerup', W / 2 + 150, H / 2, T2); fire(window, 'pointerup', W / 2 - 50, H / 2, T1);
+    res.pinch = [Math.round(view.k / k0 * 100) / 100, pointers.size, drag === null];         // expect [2, 0, true]
+    document.querySelector(`#list li[data-key="${s.key}"] .del`).click();
+    res.afterDelete = [spots.length === n0, isDirty()];
+    // a tap on a unit opens its details; a tap on land opens the province
+    if (world && world.armies.length) {
+      const a = world.armies.find(a => a.o !== world.me) || world.armies[0];
+      view = {x: a.x, y: a.y, k: 1.2}; clampView(); draw();
+      const m = marks.find(m => m.list.includes(a));
+      fire($('map'), 'pointerdown', m.x, m.y, T1); fire(window, 'pointerup', m.x, m.y, T1);
+      res.tapUnit = [!$('panel').hidden, sel && sel.type, document.querySelectorAll('#panel dt').length];
+      closePanel();
+      // "Alert within its sight range" on one of your own groups adds a spot that follows it, drawn as a ring
+      const own = world.armies.find(a => a.o === world.me);
+      if (own) {
+        const n1 = spots.length;
+        view = {x: own.x, y: own.y, k: 1.2}; clampView(); draw();
+        sel = {type: 'army', ids: [own.id]}; renderPanel();
+        document.querySelector('#panel .pbtns .primary').click();
+        const ts = spots[spots.length - 1];
+        res.troopSpot = [spots.length === n1 + 1, ts.army === own.id, document.querySelectorAll('.box.ring').length, isDirty(), document.querySelector('#panel .pbtns button:last-child').textContent];
+        document.querySelector('#panel .pbtns button:last-child').click();
+        res.troopSpotOff = [spots.length === n1, isDirty()];
+        closePanel();
+      }
+      step = 'recipients';
+      if (mon && mon.recipients) {
+        const before = JSON.stringify(mon.recipients), wait = () => new Promise(r => setTimeout(r, 800));
+        $('phNew').value = 'not a number'; $('phAdd').click(); await wait();
+        const refused = [$('toast').textContent.slice(0, 32), JSON.stringify(mon.recipients) === before];
+        $('phNew').value = 'selftest@example.com'; $('phAdd').click(); await wait();
+        const added = [mon.recipients.phones.includes('selftest@example.com'), document.querySelectorAll('#phList li').length, $('phNew').value];
+        step = 'toggle';
+        let rm = [...document.querySelectorAll('#phList li')].find(li => li.textContent.includes('selftest@example.com'));
+        const tick = rm && rm.querySelector('.sw2');
+        let toggled = null;
+        if (tick) {
+          tick.click(); await wait();
+          const off = (mon.recipients.paused.phones || []).includes('selftest@example.com');
+          rm = [...document.querySelectorAll('#phList li')].find(li => li.textContent.includes('selftest@example.com'));
+          rm.querySelector('.sw2').click(); await wait();
+          toggled = [off, !(mon.recipients.paused.phones || []).includes('selftest@example.com')];
+          rm = [...document.querySelectorAll('#phList li')].find(li => li.textContent.includes('selftest@example.com'));
+        }
+        res.toggle = toggled;
+        if (rm) rm.querySelector('button.icon:last-child').click(); await wait();
+        res.recipients = [refused, added, JSON.stringify(mon.recipients) === before, $('routeState').textContent];
+      }
+      step = 'whatsapp form';
+      if (mon && mon.whatsapp && !mon.whatsapp.on) {
+        $('waShow').click();
+        const open = [!$('waSetup').hidden, $('waShow').hidden, $('waPhoneId').value.length > 5];
+        $('waToken').value = 'short'; $('waConnect').click(); await new Promise(r => setTimeout(r, 900));
+        const refused = [$('toast').textContent.slice(0, 36), mon.whatsapp.on];
+        $('waHide').click();
+        res.whatsappForm = [open, refused, [$('waSetup').hidden, !$('waShow').hidden, $('waToken').value]];
+      }
+      step = 'email form';
+      if (mon && mon.email && !mon.email.on && !mon.email.pending && !$('emShow').hidden) {
+        $('emShow').click();
+        const open = [!$('emSetup').hidden, $('emShow').hidden];
+        $('emFrom').value = 'not an address'; $('emPass').value = 'x'; $('emTest').click(); await new Promise(r => setTimeout(r, 900));
+        const refused = [$('toast').textContent.slice(0, 40), mon.email.pending];
+        $('emFrom').value = ''; $('emHide').click(); await new Promise(r => setTimeout(r, 700));
+        res.emailForm = [open, refused, [$('emSetup').hidden, !$('emShow').hidden]];
+      }
+      step = 'radar contact';
+      {
+        const fake = {id: -42, x: 9500, y: 3700, o: 0, w: 'air', rc: [['aircraft', 30]], u: [], pts: [], st: 'waiting', loc: 'test'};
+        world.armies.push(fake); world.byId.set(fake.id, fake); feedKey = ''; renderFeed();
+        view = {x: fake.x, y: fake.y, k: 1.2}; clampView(); draw();
+        const m = marks.find(m => m.list.includes(fake));
+        if (m) { fire($('map'), 'pointerdown', m.x, m.y, T1); fire(window, 'pointerup', m.x, m.y, T1); }
+        res.radar = [!!m && m.radar, !$('panel').hidden && $('panelBody').textContent.includes('Radar contact'), $('panelBody').textContent.includes('large (30)'), $('feed').textContent.includes('Radar contact')];
+        closePanel();
+        world.armies.splice(world.armies.indexOf(fake), 1); world.byId.delete(fake.id); feedKey = ''; renderFeed(); draw();
+      }
+      step = 'prediction';
+      {
+        const g = {id: -77, o: 5, x: 9600, y: 3720, err: 20, unc: 29, ago: 25, note: 'on its way to Testville', units: [['Corvette', 1]], last: [9560, 3700]};
+        world.ghosts = (world.ghosts || []).concat(g);
+        view = {x: g.x, y: g.y, k: 1.2}; clampView(); draw();
+        const gm = ghostMarks.find(m => m.g === g);
+        if (gm) { fire($('map'), 'pointerdown', gm.x, gm.y, T1); fire(window, 'pointerup', gm.x, gm.y, T1); }
+        res.prediction = [!!gm, sel && sel.type, $('panelBody').textContent.includes('29% uncertain')];
+        closePanel(); world.ghosts = world.ghosts.filter(x => x !== g); draw();
+      }
+      step = 'search';
+      {
+        const china = Object.entries(world.players).find(([, P]) => P[0] === 'China');
+        if (china) { $('find').value = 'chin'; $('find').dispatchEvent(new Event('change')); await new Promise(r => setTimeout(r, 300));
+          res.search = [sel && sel.type, sel && sel.o === +china[0], $('panelBody').textContent.includes('Provinces')]; closePanel(); }
+      }
+      step = 'history';
+      if (hist.times.length >= 2) {
+        $('histRange').value = 0; $('histRange').dispatchEvent(new Event('input')); await new Promise(r => setTimeout(r, 1200));
+        const past = [hist.on, !!hist.t, !$('banner').hidden, world.armies.length > 0];
+        $('histLive').click(); await new Promise(r => setTimeout(r, 1200));
+        res.history = [past, !hist.on, !!world.ghosts];
+      }
+      step = 'province tap';
+      const p = geo.land.find((p, i) => world.owners[i] === world.me);
+      view = {x: p.c[0], y: p.c[1], k: 3}; clampView(); draw();
+      const far = marks.every(m => Math.hypot(m.x - W / 2, m.y - H / 2) > 40);
+      if (far) {
+        fire($('map'), 'pointerdown', W / 2, H / 2, T1); fire(window, 'pointerup', W / 2, H / 2, T1);
+        await new Promise(r => setTimeout(r, 700));
+        res.tapProvince = [sel && sel.type, sel && sel.data && !sel.data.error ? sel.data.name : sel && sel.data, document.querySelectorAll('#panel dt').length];
+      }
+    }
+  } catch (e) { res.error = String(e.stack || e); }
+  clearTimeout(stuck);
+  api('/api/clientlog', {selftest: res});
+}
+
+api('/api/clientlog', {opened: navigator.userAgent, window: [innerWidth, innerHeight], touch: COARSE}).catch(() => {});
+loadMonitor();
+loadActivity();
+loadHistIndex();
+setInterval(() => { if (!document.hidden) loadHistIndex(); }, 30000);
+Promise.all([loadGeo(), loadWorld(true)]).then(() => {
+  let stored = null;
+  try { stored = localStorage.getItem('conalert.view'); } catch (e) { /* private window */ }
+  if (geo) { if (!stored) fitSpots(); buildPaths(); renderAll(); }
+  const q = new URLSearchParams(location.search), at = q.get('at');   // ?at=x,y,zoom or ?at=whole opens on that view
+  if (q.get('sight')) { show.sight = true; $('chkSight').checked = true; }
+  if (q.get('ranges')) { show.range = true; $('chkRange').checked = true; }
+  if (q.get('full')) document.body.classList.add('full');
+  if (q.get('email')) setTimeout(() => { $('drawer').hidden = false; if (!$('emShow').hidden) $('emShow').click(); }, 1500);   // ?email=1 opens the email form
+  if (q.get('settings')) $('drawer').hidden = false;
+  if (q.get('tab')) showTab(q.get('tab'));
+  if (geo && at === 'whole') fit(0, 0, geo.w, geo.h);
+  else if (geo && at) { const [x, y, k] = at.split(',').map(Number); if (isFinite(x + y + k)) { view = {x, y, k}; clampView(); render(); } }
+  if (geo && world && q.get('pick')) {                                // ?pick=fight|war|me opens the details of such a group
+    const want = q.get('pick'), a = world.armies.find(a => want === 'fight' ? a.atk && a.atk[0] : relOf(a.o) === want);
+    if (a) pick(a, +q.get('k') || 1.1);
+  }
+  if (q.get('demo') === 'activity') {                                  // page-only made-up history, to see how it looks
+    const H = a => { const h = Array(24).fill(0); for (const [k, n] of a) h[k] = n; return h; };
+    actDemo = {watched: Array(24).fill(3), events: 30, players: [
+      {o: 92, nation: 'Vietnam (made-up)', player: 'example', rel: 'war', orders: 21, days: 3, last_min: 14, hours: H([[19, 3], [20, 6], [21, 5], [22, 3], [9, 2], [13, 2]]),
+       busy: [19, 23, 81], quiet: [0, 1, 2, 3, 4, 5, 6, 7], shuttles: [['Hanoi', 'Hong Kong', 9]], routes: [['Hanoi → Hong Kong', 6], ['Hue → Da Nang', 2]], dest: [['Hong Kong', 6], ['Da Nang', 3]], kinds: {}},
+      {o: 5, nation: 'China (made-up)', player: 'example', rel: 'war', orders: 4, days: 2, last_min: 260, hours: H([[7, 2], [8, 1], [23, 1]]), busy: null, quiet: [], shuttles: [], routes: [], dest: [], kinds: {}}]};
+    actKey = ''; loadActivity();
+  }
+  if (geo && world && q.get('demo') === 'reach') {                     // page-only: a made-up group that stood still
+    const [x, y] = (q.get('at') || '11983,3423').split(',').map(Number);
+    api(`/api/reachdemo?x=${x}&y=${y}&min=${q.get('min') || 90}&sea=${q.get('sea') || 0}`).then(r => {
+      world.ghosts = [{id: -71, o: 5, x, y, err: 0, unc: 1, sure: 78, ago: +(q.get('min') || 90), note: 'standing still when last seen (made-up example)',
+                       units: [[q.get('sea') ? 'Corvette' : 'Motorized Infantry', 2]], last: [x, y], net: r.net,
+                       else: [{where: 'moved somewhere along the roads or sea lanes it could reach (highlighted)', x: null, y: null, pct: 22}]}];
+      sel = {type: 'ghost', id: -71}; renderPanel(); render();
+    });
+  }
+  if (geo && world && q.get('demo') === 'predict') {
+    const [x, y] = (q.get('at') || '11900,3200').split(',').map(Number);
+    const demoNet = []; for (let i = 0; i < 12; i++) { const a1 = i / 12 * 6.28, a2 = (i + 1) / 12 * 6.28; demoNet.push(x + 120 + Math.cos(a1) * 30, y + 50 + Math.sin(a1) * 20, x + 120 + Math.cos(a2) * 45, y + 50 + Math.sin(a2) * 30); }
+    world.ghosts = [{id: -61, o: 5, x: x - 100, y: y - 30, err: 0, unc: 1, sure: 86, ago: 28, note: 'on the ground at its airbase (made-up example) when last seen', units: [['Air Superiority Fighter', 3]], last: [x - 100, y - 30], reach: 650, base: 'made-up base', base_xy: [x - 100, y - 30],
+                     else: [{where: 'moved to its airbase (made-up) A', x: x - 300, y: y - 250, pct: 3}, {where: 'moved to its airbase (made-up) B', x: x + 250, y: y - 300, pct: 2},
+                            {where: 'on a new mission, anywhere within 650 of made-up base', x: null, y: null, pct: 9}]},
+                    {id: -62, o: 5, x: x + 120, y: y + 50, err: 0, unc: 1, sure: 71, ago: 140, note: 'standing still when last seen', units: [['Motorized Infantry', 3]], last: [x + 120, y + 50], net: demoNet,
+                     else: [{where: 'moved somewhere along the roads or sea lanes it could reach (highlighted)', x: null, y: null, pct: 29}]}];
+    render();
+    if (q.get('pick')) setTimeout(() => { sel = {type: 'ghost', id: +q.get('pick') === 2 ? -62 : -61}; renderPanel(); render(); }, 300);
+  }
+  if (geo && world && q.get('demo') === 'radar') {
+    const [x, y] = (q.get('at') || '11900,3200').split(',').map(Number);
+    for (const f of [{id: -51, x: x - 120, y: y - 40, o: 0, w: 'air', rc: [['aircraft', 30]], u: [], pts: [], st: 'waiting', loc: 'made-up example'},
+                     {id: -52, x: x + 150, y: y + 60, o: 5, w: 'sea', rc: [['ships', 30], ['submarine', 10]], u: [], pts: [], st: 'waiting', loc: 'made-up example'}]) {
+      world.armies.push(f); world.byId.set(f.id, f);
+    }
+    feedKey = ''; renderFeed(); render();
+    if (q.get('pick')) setTimeout(() => { sel = {type: 'army', ids: [-52]}; renderPanel(); render(); }, 300);
+  }
+  if (location.search.includes('selftest')) setTimeout(selftest, 600);
+});
+</script>
+</body>
+</html>
