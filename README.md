@@ -28,28 +28,26 @@ shows positions only, so their direction is worked out from how they move.
 
 - macOS (the hidden game window and iMessage sending use macOS)
 - Python 3 and the Xcode command line tools (`xcode-select --install`), for `swiftc`
-- A Conflict of Nations account, signed in once in Safari
+- A Conflict of Nations account
 
 ## Set up
 
 ```sh
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-cp config.example.json config.json   # then fill in your details
+./conalert ui
 ```
 
-`config.json`:
+Then on the page, under **Settings**:
 
-| Setting | What it is |
-|---|---|
-| `phone` | the number alerts go to by iMessage |
-| `country_code` | added in front of numbers typed the local way |
-| `game_id` | the `gameID` in your game's address |
-| `user_id` | the `uid` in your game's address |
+1. **Game & account:** press **Log in** and log in on the game's own website in the window that opens
+   (your password never passes through this tool; the login is remembered until you log out). Enter
+   your game id (the number after `gameID=` in the game's address) and press **Watch this game**.
+2. **Where alerts go:** add the numbers and email addresses to alert.
+3. **Start monitor.**
 
-You can also log in and pick the game on the page instead: **Settings → Game & account**. Log in
-happens on the game's own website inside the background window (your password never passes through
-this tool) and is remembered until you log out. Each game keeps its own spots, history and records.
+Each game keeps its own spots, history and records. If you would rather use a file, copy
+`config.example.json` to `config.json` and fill in `phone`, `country_code` and `game_id`.
 
 ## Use
 
@@ -64,3 +62,25 @@ this tool) and is remembered until you log out. Each game keeps its own spots, h
 
 Everything else (where alerts go, spots, email, WhatsApp) is set up on the page under **Settings**.
 Your details, alert lists and history stay in files on your Mac that are not part of this repository.
+
+## The code
+
+| File | What it does |
+| --- | --- |
+| `con_alert.py` | The `./conalert` commands |
+| `monitor.py` | The watch loop: reads the game every 20 s and sends alerts (each foreign group once) |
+| `game.py` | The hidden game window, logging in, and reading the game's own data |
+| `predict.py` | Where out-of-sight groups probably are, and learning from how right that was |
+| `activity.py` | When players give orders (are online) |
+| `history.py` | A saved copy of every check, for going back in time on the page |
+| `delivery.py` | Messages, email and WhatsApp, and the recipient lists |
+| `server.py` | The page server; the page itself is `ui.html`, `ui.css` and `ui.js` |
+| `common.py` | Settings, file locations, the log |
+| `viewer.swift` | The invisible window the game runs in |
+
+Tests (they use a temporary folder, never your real data, and send nothing):
+
+```sh
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pytest tests
+```
