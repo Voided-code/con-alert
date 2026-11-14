@@ -209,6 +209,12 @@ final class Viewer: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelega
             }
         case "quit": done([:]); DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { exit(0) }
         case "toggle": if shown { hide() } else { show() }; done([:])
+        case "look":                          // test: how the hidden window is kept (alpha, level below/at desktop)
+            if !shown {
+                if let a = req["alpha"] as? NSNumber { win.alphaValue = CGFloat(a.doubleValue) }
+                if let l = req["level"] as? String { win.level = l == "normal" ? .normal : NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) - 1) }
+            }
+            done(["alpha": Double(win.alphaValue), "level": win.level.rawValue])
         case "signout":                       // forget the saved login (cookies and site data) of this window
             let store = web.configuration.websiteDataStore
             store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) {

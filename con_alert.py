@@ -623,7 +623,11 @@ def _open_game():
             log("hidden game window: opened the game with its own login")
             remember_account("own")
             return "ok"
-    # 2. borrow the session of a Safari game tab (fresh if it is open, else the last one saved)
+    # 2. borrow the session of a Safari game tab (fresh if it is open, else the last one saved) -
+    #    but not after you logged out on the page, until you log in again
+    if (STATE / "logged-out").exists():
+        log("hidden game window: logged out")
+        return "login"
     for url in (safari_client_url(), CLIENT_URL_FILE.read_text() if CLIENT_URL_FILE.exists() else ""):
         if url and f"gameID={game_id()}" in url and try_client(url):
             log("hidden game window: opened the game with the session from Safari")
@@ -675,6 +679,7 @@ def account_signin():
 def account_done():
     """Signed in: hide the window again and open the game with that login."""
     (STATE / "signing-in.json").unlink(missing_ok=True)
+    (STATE / "logged-out").unlink(missing_ok=True)
     viewer_call("hide")
     r = viewer_open_game()
     st = account_state()
@@ -687,6 +692,7 @@ def account_signout():
     viewer_call("signout", timeout=30)
     CLIENT_URL_FILE.unlink(missing_ok=True)
     (STATE / "account.json").unlink(missing_ok=True)
+    (STATE / "logged-out").write_text(str(round(time.time())))   # do not fall back on Safari's login either
     log("signed out of the game in the background window")
     return account_state()
 
@@ -1861,31 +1867,53 @@ def enemy_picture(spot, enemies, path):
     if not info or not view:
         return None
     pix, e = info["scale"], enemies[0]
-    px, py = to_picture(e["x"], e["y"], view, pix)
-    W, H = view["w"] * pix, view["h"] * pix
-    moved = not (300 < px < W - 300 and MAP_TOP + 250 < py < H - 250)
+    # zoom so the picture shows the spot and the enemy closely: the box (or troop circle) and the enemy
+    # fill about half the picture; never further out than the whole region nor closer than the game allows
+    sx_, sy_, sw, sh = spot["world"]
+    ex_ = sx_ + ((e["x"] - sx_ + 7696) % 15393 - 7696)    # the enemy on the same side of the map edge
+    x0_, x1_ = min(sx_, ex_), max(sx_ + sw, ex_)
+    y0_, y1_ = min(sy_, e["y"]), max(sy_ + sh, e["y"])
+    want = min(620 / max(30.0, (x1_ - x0_) * 1.5), 470 / max(30.0, (y1_ - y0_) * 1.5))
+    want = max(0.45, min(2.5, want))
+    cx, cy = (x0_ + x1_) / 2, (y0_ + y1_) / 2
+    moved = True
     try:
-        if moved:
-            view_set(e["x"] - view["w"] / view["scale"] / 2, e["y"] - view["h"] / view["scale"] / 2)
-            time.sleep(0.8)
-        st, img = grab_viewer()
+        st, img0 = grab_viewer()                          # the map as it was, to check the game redraws it
+        for attempt in range(2):
+            view_set(0, 0, want)                          # zoom first: the visible area depends on it
+            time.sleep(0.3)
+            z = view_get() or view
+            view_set(cx - z["w"] / z["scale"] / 2, cy - (z["h"] + MAP_TOP / pix) / z["scale"] / 2)
+            time.sleep(1.5)
+            st, img = grab_viewer()
+            if st != "ok" or img0 is None or img.shape != img0.shape or \
+                    np.abs(img[MAP_TOP + 100:].astype(np.int16)[::8, ::8] - img0[MAP_TOP + 100:].astype(np.int16)[::8, ::8]).mean() > 2:
+                break
+            # the picture did not change although the map was moved: the game has stopped drawing its map
+            log("alert picture: the hidden game's map is not redrawing, reopening the game")
+            viewer_open_game()
+            time.sleep(2)
         now = view_get()
         if st != "ok" or not now:
             return None
         px, py = [int(v) for v in to_picture(e["x"], e["y"], now, pix)]
         zx, zy = [int(v) for v in to_picture(spot["world"][0], spot["world"][1], now, pix)]
         k = now["scale"] * pix
+        mx, my = [int(v) for v in to_picture(cx, cy, now, pix)]   # the middle of spot and enemy
         cw, ch = min(img.shape[1], 1300), min(img.shape[0] - MAP_TOP, 1000)
-        x0 = max(0, min(img.shape[1] - cw, px - cw // 2))
-        y0 = max(MAP_TOP, min(img.shape[0] - ch, py - ch // 2))
+        x0 = max(0, min(img.shape[1] - cw, mx - cw // 2))
+        y0 = max(MAP_TOP, min(img.shape[0] - ch, my - ch // 2))
         obs = {"pos": (x0, y0), "size": (cw, ch),
-               "det": {"zone": (zx, zy, int(spot["world"][2] * k), int(spot["world"][3] * k)), "spot": (px, py)}}
+               "det": {"zone": (zx, zy, int(spot["world"][2] * k), int(spot["world"][3] * k)), "spot": (px, py),
+                       "circle": bool(spot.get("circle"))}}      # a spot that follows a troop is its sight circle
         return spot_picture(img, obs, path)
     except Exception as ex:
         log(f"picture failed: {type(ex).__name__}: {ex}")
         return None
     finally:
-        if moved:
+        if moved:                                         # back to the zoom and place it had
+            view_set(0, 0, view["scale"])
+            time.sleep(0.2)
             view_set(view["x"], view["y"])
 
 
@@ -2076,7 +2104,7 @@ def spot_picture(img, obs, path):
     pic = Image.fromarray(img[fy:fy + fh, fx:fx + fw]).convert("RGB")
     d = ImageDraw.Draw(pic)
     zx, zy, zw, zh = det["zone"]
-    d.rectangle([zx - fx, zy - fy, zx - fx + zw, zy - fy + zh], outline=(255, 220, 0), width=2)
+    (d.ellipse if det.get("circle") else d.rectangle)([zx - fx, zy - fy, zx - fx + zw, zy - fy + zh], outline=(255, 220, 0), width=3)
     if det["spot"]:
         sx, sy = det["spot"][0] - fx, det["spot"][1] - fy
         d.ellipse([sx - 48, sy - 48, sx + 48, sy + 48], outline=(255, 40, 40), width=4)
