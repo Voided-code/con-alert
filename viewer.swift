@@ -209,6 +209,11 @@ final class Viewer: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelega
             }
         case "quit": done([:]); DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { exit(0) }
         case "toggle": if shown { hide() } else { show() }; done([:])
+        case "signout":                       // forget the saved login (cookies and site data) of this window
+            let store = web.configuration.websiteDataStore
+            store.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(), modifiedSince: .distantPast) {
+                self.web.load(URLRequest(url: URL(string: "about:blank")!)); done([:])
+            }
         default: done([:])
         }
     }

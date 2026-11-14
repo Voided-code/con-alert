@@ -19,6 +19,7 @@
     --me: #57d184; --ally: #6aaef5; --war: #ff5d5d; --neutral: #f0a23b;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }              /* hidden always wins over a layout rule */
   html { -webkit-text-size-adjust: 100%; }
   body { margin: 0; background: var(--bg); color: var(--text);
          padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
@@ -38,6 +39,7 @@
   button:disabled { opacity: .45; cursor: default; }
   button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
   button.active { outline: 2px solid var(--accent); }
+  button.danger { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
   main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; padding: 16px; align-items: start; }
   #toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
   #hint { color: var(--muted); font-size: 13px; }
@@ -326,6 +328,16 @@
 </main>
 <div id="drawer" hidden role="dialog" aria-label="Settings">
   <div class="dhead"><h2>Settings</h2><button id="drawerClose" class="icon" aria-label="Close settings">✕</button></div>
+  <div class="dsec" id="acct">
+    <h2>Game &amp; account</h2>
+    <p class="note" id="acctState"></p>
+    <div class="row"><input id="gameId" class="name" inputmode="numeric" autocomplete="off" placeholder="Game id" aria-label="Game id">
+      <button id="gameSwitch">Watch this game</button></div>
+    <div class="row" id="acctBtns"><button id="acctIn">Log in</button><button id="acctOut">Log out</button></div>
+    <div class="row" id="acctSure" hidden><span class="note">Are you sure? Alerts stop until you log in again.</span>
+      <button id="acctOutYes" class="danger">Yes, log out</button><button id="acctOutNo">Cancel</button></div>
+    <div class="row" id="acctDoneRow" hidden><span class="note">Log in in the game window, then:</span><button id="acctDone" class="primary">Done</button></div>
+  </div>
   <div class="dsec">
     <div class="row"><button id="btnMon">Start monitor</button><button id="btnTest">Send test alert</button><button id="btnShow">Show game window</button></div>
   </div>
@@ -1276,6 +1288,7 @@ function renderMonitor() {
   p.className = 'pill ' + (mon.running && !blind ? 'on' : 'off');
   $('btnMon').textContent = mon.running ? 'Stop monitor' : 'Start monitor';
   $('btnTest').title = 'Sends a real alert with a picture by ' + (mon.sends_to || 'iMessage');
+  renderAccount();
   renderRoute();
   $('log').textContent = mon.log.join('\n') || 'No log yet.';
   const al = $('alerts');
@@ -2141,6 +2154,39 @@ function countryCard(o) {
   card.append(btns);
   return card;
 }
+
+// ---- game & account
+let acctKey = '';
+function renderAccount() {
+  const a = mon && mon.account;
+  if (!a) return;
+  const key = JSON.stringify(a);
+  if (key === acctKey) return;
+  acctKey = key;
+  $('acctState').textContent = a.name ? `Logged in as ${a.name}` + (a.nation ? ` (${a.nation})` : '') + (a.how === 'safari' ? ' · using your Safari session' : '')
+                            : a.how ? 'Logged in' : 'Not logged in';
+  if (document.activeElement !== $('gameId')) $('gameId').value = a.game_id || '';
+  $('acctDoneRow').hidden = !a.signing_in;
+  $('acctBtns').hidden = a.signing_in;
+  $('acctOut').hidden = !a.how;
+}
+async function acct(body, msg) {
+  try { mon.account = await api('/api/account', body); acctKey = ''; renderAccount(); if (msg) toast(typeof msg === 'function' ? msg(mon.account) : msg); loadMonitor(); }
+  catch (e) { toast(e.message, true); }
+}
+$('acctIn').onclick = () => acct({action: 'signin'}, 'Log in in the game window that opened, then press Done.');
+$('acctDone').onclick = () => { $('acctDone').disabled = true; acct({action: 'done'}, a => a.result === 'ok' ? 'Signed in. The game is open again.' : 'Could not open the game with that login. Check the game id.').finally(() => { $('acctDone').disabled = false; }); };
+$('acctOut').onclick = () => { $('acctSure').hidden = false; $('acctBtns').hidden = true; };          // asks first
+$('acctOutNo').onclick = () => { $('acctSure').hidden = true; $('acctBtns').hidden = false; };
+$('acctOutYes').onclick = () => { $('acctSure').hidden = true; $('acctBtns').hidden = false; acct({action: 'signout'}, 'Logged out.'); };
+$('gameSwitch').onclick = () => {
+  const id = $('gameId').value.trim();
+  if (!id || id === (mon.account || {}).game_id) return;
+  $('gameSwitch').disabled = true; $('gameSwitch').textContent = 'Opening…';
+  acct({action: 'game', game_id: id}, a => a.result === 'ok' ? `Now watching game ${a.game_id}.` : `Switched to game ${a.game_id}, but it did not open: sign in first.`)
+    .finally(() => { $('gameSwitch').disabled = false; $('gameSwitch').textContent = 'Watch this game'; loadWorld(true); loadGeo(); });
+};
+$('gameId').addEventListener('keydown', ev => { if (ev.key === 'Enter') $('gameSwitch').click(); });
 
 // ---- sidebar tabs, settings drawer, help
 function showTab(name) {

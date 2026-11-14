@@ -59,6 +59,36 @@ COUNTRY_CODE = _CONFIG.get("country_code", "+61")  # put in front of numbers typ
 GAME_ID = str(_CONFIG.get("game_id", ""))       # the game to watch (the gameID in the game's address)
 USER_ID = str(_CONFIG.get("user_id", ""))       # your Conflict of Nations user id (the uid in the game's address)
 GAME_URL = f"https://www.conflictnations.com/play.php?bust=1&uid={USER_ID}&gameID={GAME_ID}&source=browser-desktop"
+CONFIG_FILE = Path(__file__).resolve().parent / "config.json"
+
+
+def config():
+    """The settings as saved now (the page can change them while the tool runs)."""
+    try:
+        return json.loads(CONFIG_FILE.read_text())
+    except Exception:
+        return {}
+
+
+def config_save(**changes):
+    d = config()
+    d.update({k: v for k, v in changes.items() if v is not None})
+    tmp = CONFIG_FILE.with_suffix(".tmp")
+    tmp.touch(mode=0o600)
+    tmp.write_text(json.dumps(d, indent=2))
+    tmp.replace(CONFIG_FILE)
+    return d
+
+
+def game_id():
+    return str(config().get("game_id", GAME_ID) or "")
+
+
+def game_url():
+    """The game's address. The user id is added once it is known (it is read from the game after signing in)."""
+    c = config()
+    uid = f"&uid={c['user_id']}" if c.get("user_id") else ""
+    return f"https://www.conflictnations.com/play.php?bust=1{uid}&gameID={c.get('game_id', GAME_ID)}&source=browser-desktop"
 INTERVAL = 20                   # seconds between checks
 MIN_RED_PIXELS = 250            # red pixels inside a 64x64 patch that count as a unit marker (a whole marker is ~600)
 REALERT_MINUTES = 30            # remind again if the ship is still there after this long
@@ -269,18 +299,20 @@ def make_spot(img, rect, name, enabled=True, spot_id=None):
 # ----------------------------------------------------- hidden game window
 # Finds the game client address (with its login tokens) in the Safari tab, if one is open.
 SAFARI_SOURCE = """
+on run argv
 if application "Safari" is not running then return ""
 tell application "Safari"
   repeat with w in windows
     repeat with t in tabs of w
       try
-        if (URL of t) contains "gameID=%s" then return source of t
+        if (URL of t) contains "gameID=" & (item 1 of argv) then return source of t
       end try
     end repeat
   end repeat
 end tell
 return ""
-""" % GAME_ID
+end run
+"""
 
 HAS_MAP = "document.getElementById('map_canvas') ? 'yes' : 'no'"
 # Game pop-ups (news, offers, tips) cover the map and block it from moving: click their close buttons.
@@ -487,7 +519,7 @@ def viewer_wait(test, seconds):
 def safari_client_url():
     """The game client address from an open Safari game tab ("" if there is none). Saved for later."""
     try:
-        src = subprocess.run(["osascript", "-e", SAFARI_SOURCE], capture_output=True, text=True, timeout=20).stdout
+        src = subprocess.run(["osascript", "-e", SAFARI_SOURCE, game_id()], capture_output=True, text=True, timeout=20).stdout
     except Exception:
         return ""
     m = re.search(r'<iframe[^>]*src="([^"]*con-client[^"]*)"', src)
@@ -581,22 +613,119 @@ def _open_game():
         viewer_call("load", url=url)
         return viewer_wait(lambda: viewer_js(HAS_MAP) == "yes", 60)
 
-    # 1. the viewer's own login, if someone has logged in inside it
-    viewer_call("load", url=GAME_URL)
+    # 1. the viewer's own login (saved in the window once you sign in there; it stays until you sign out)
+    viewer_call("load", url=game_url())
     time.sleep(1)
     viewer_wait(loaded, 30)
     if "play.php" in ((viewer_call("info") or {}).get("url") or ""):
         src = viewer_js("(document.querySelector('iframe[src*=\"con-client\"]') || {}).src || ''")
         if src and try_client(src):
             log("hidden game window: opened the game with its own login")
+            remember_account("own")
             return "ok"
     # 2. borrow the session of a Safari game tab (fresh if it is open, else the last one saved)
     for url in (safari_client_url(), CLIENT_URL_FILE.read_text() if CLIENT_URL_FILE.exists() else ""):
-        if url and try_client(url):
+        if url and f"gameID={game_id()}" in url and try_client(url):
             log("hidden game window: opened the game with the session from Safari")
+            remember_account("safari")
             return "ok"
     log("hidden game window: not logged in")
     return "login"
+
+
+# ------------------------------------------------------------------ account
+# You sign in to Conflict of Nations once, in the background game window itself (on the game's own site:
+# your password never passes through this tool). The window keeps that login like a browser does, until you
+# sign out. The game id can be changed from the page; each game's spots, history and records are kept apart.
+ACCOUNT_JS = """(function(){ try { const ps = hup.gameState.getPlayerState(), p = ps.getPlayerByUserID(hup.user.id);
+  return JSON.stringify({uid: String(hup.user.id), name: p ? String(p.userName || p.name || '') : '', nation: p ? String(p.nationName || '') : '',
+                         game: String(hup.gameServer && hup.gameServer.gameID || '')}); } catch (e) { return ''; } })()"""
+GAME_FILES = ["spots.json", "state/tracks.json", "state/activity.jsonl", "state/activity-hours.json",
+              "state/activity-routes.json", "state/history", "state/client_url.txt"]
+
+
+def remember_account(how):
+    """After the game opened: note who is signed in and how, and keep the user id for next time."""
+    try:
+        a = json.loads(viewer_js(ACCOUNT_JS) or "{}")
+    except Exception:
+        a = {}
+    a["how"], a["at"] = how, round(time.time())
+    (STATE / "account.json").write_text(json.dumps(a))
+    if a.get("uid") and a["uid"] != str(config().get("user_id", "")):
+        config_save(user_id=a["uid"])
+
+
+def account_state():
+    a = _read_json(STATE / "account.json", {})
+    c = config()
+    return {"game_id": str(c.get("game_id", "")), "uid": a.get("uid") or str(c.get("user_id", "")), "name": a.get("name", ""),
+            "nation": a.get("nation", ""), "how": a.get("how", ""), "signing_in": bool(_read_json(STATE / "signing-in.json", {}))}
+
+
+def account_signin():
+    """Show the game's own sign-in page in the background window."""
+    viewer_start()
+    (STATE / "signing-in.json").write_text(json.dumps({"at": round(time.time())}))
+    viewer_call("load", url="https://www.conflictnations.com/")
+    viewer_call("show")
+    return account_state()
+
+
+def account_done():
+    """Signed in: hide the window again and open the game with that login."""
+    (STATE / "signing-in.json").unlink(missing_ok=True)
+    viewer_call("hide")
+    r = viewer_open_game()
+    st = account_state()
+    st["result"] = r
+    return st
+
+
+def account_signout():
+    viewer_start()
+    viewer_call("signout", timeout=30)
+    CLIENT_URL_FILE.unlink(missing_ok=True)
+    (STATE / "account.json").unlink(missing_ok=True)
+    log("signed out of the game in the background window")
+    return account_state()
+
+
+def switch_game(new_id):
+    """Watch a different game: put the current game's spots, history and records aside (they come back if you
+    switch back), then open the new game."""
+    new_id = re.sub(r"\D", "", str(new_id or ""))
+    if not new_id:
+        raise RuntimeError("The game id is the number after gameID= in the game's address.")
+    old_id = game_id()
+    if new_id == old_id:
+        return account_state()
+    keep = STATE / "games"
+    for name in GAME_FILES:                               # this game's files aside...
+        f = ROOT / name
+        if f.exists():
+            dest = keep / old_id / name
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            if dest.exists():
+                shutil.rmtree(dest) if dest.is_dir() else dest.unlink()
+            shutil.move(str(f), str(dest))
+    for name in GAME_FILES:                               # ...and the new game's back, if it was watched before
+        f = keep / new_id / name
+        if f.exists():
+            (ROOT / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(f), str(ROOT / name))
+    _orders.clear(); _still.clear(); _hist.update({"file": None, "own": None, "pl": None})
+    config_save(game_id=new_id)
+    log(f"switched from game {old_id} to game {new_id}")
+    running = running_pid()
+    if running:
+        cmd_stop()
+    r = viewer_open_game() if viewer_pid() else viewer_start()
+    if running:
+        cmd_start()
+    st = account_state()
+    st["result"] = r
+    return st
 
 
 def viewer_start():
@@ -2818,7 +2947,7 @@ def watch_spot_data(spot, m, data, now):
         pic = enemy_picture(spot, here, ALERTS / f"{stamp}-{spot['id']}.jpg")
         log(f"[{spot['name']}] foreign units {'within sight of the troop' if spot.get('circle') else 'in spot'}: {describe(here)}")
         ok = send(f"CON ALERT: {spot['name']}: {describe(here)}{'' if new else ' - still there'} "
-                  f"(game {GAME_ID}, {dt.datetime.now():%-I:%M%p %a %-d %b}).", pic)
+                  f"(game {game_id()}, {dt.datetime.now():%-I:%M%p %a %-d %b}).", pic)
         record(spot["name"], [(e["nation"] or ("unknown" if e.get("radar") else ""), relation_text(e),
                                radar_text(e) if e.get("radar") else ", ".join(f"{n} {name}" for name, n in e["units"]),
                                "air" if e["air"] else "sea" if e["sea"] else "land",
@@ -2859,7 +2988,7 @@ def watch_spot(spot, m, obs, img, now):
             what = f"Enemy at {spot['name']}" + (f": {summary}" if summary else " (could not read what it is)")
             again = " - still there" if m["alert"] else ""
             ok = send(f"CON ALERT: {what}{again} "
-                      f"(game {GAME_ID}, {dt.datetime.now():%-I:%M%p %a %-d %b}).", pic)
+                      f"(game {game_id()}, {dt.datetime.now():%-I:%M%p %a %-d %b}).", pic)
             record(spot["name"], [("", "red marker seen in picture", summary or "not read", "", "", "", "", "", "")],
                    "still there" if m["alert"] else "new", ok, pic)
             m["alert"], m["last_alert"], m["nonship"] = True, now, (0.0, "")
@@ -2980,7 +3109,7 @@ def cmd_test():
             return "No test text was sent: you have no spots yet. Add one and press Save changes first."
         return "No test text was sent: none of your spots can be watched right now (see their status in the Spots list)."
     spot, pic = seen[0]
-    ok = send(f"CON alert test: watching {len(seen)} spot(s), e.g. {spot['name']} (game {GAME_ID}). "
+    ok = send(f"CON alert test: watching {len(seen)} spot(s), e.g. {spot['name']} (game {game_id()}). "
               "You will get a text like this, with a picture, when foreign units enter a spot.", pic)
     return "Test text sent." if ok else "Sending failed - see the log."
 
@@ -3058,7 +3187,7 @@ def serve():
         return {"running": bool(running_pid()), "status": status, "log": tail, "alerts": record_tail(8),
                 "record_file": str(RECORD),
                 "interval": INTERVAL, "phone": PHONE, "min_red": MIN_RED_PIXELS,
-                "sends_to": sends_to(), "email": email_state(), "whatsapp": wa_state(), "recipients": recipients(),
+                "sends_to": sends_to(), "email": email_state(), "whatsapp": wa_state(), "recipients": recipients(), "account": account_state(),
                 "delivery": _read_json(DELIVERY, {})}
 
     def api_save(body):
@@ -3215,6 +3344,15 @@ def serve():
                     self.reply(200, {"message": "ok", "shown": bool(r.get("shown"))})
                 elif self.path == "/api/test":
                     self.reply(200, {"message": cmd_test()})
+                elif self.path == "/api/account":
+                    try:
+                        act = body.get("action")
+                        with lock:
+                            self.reply(200, account_signin() if act == "signin" else account_done() if act == "done"
+                                       else account_signout() if act == "signout" else switch_game(body.get("game_id")) if act == "game"
+                                       else account_state())
+                    except RuntimeError as ex:
+                        self.reply(400, {"error": str(ex)})
                 elif self.path == "/api/recipients":
                     try:
                         self.reply(200, recipients_save(body.get("phones"), body.get("emails"), body.get("sms"), body.get("whatsapp"), body.get("paused")))

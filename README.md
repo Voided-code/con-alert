@@ -19,6 +19,7 @@ gives you a live map of everything your side can see.
 - **Player activity:** when each player tends to give orders (a sign they are online), and the
   movements they repeat.
 - **History:** every check is saved for 7 days; scroll back or play it back on the map.
+- **Account:** log in and switch games from the page.
 
 The game only shares the orders of countries you share intelligence with. For everyone else it
 shows positions only, so their direction is worked out from how they move.
@@ -45,6 +46,10 @@ cp config.example.json config.json   # then fill in your details
 | `country_code` | added in front of numbers typed the local way |
 | `game_id` | the `gameID` in your game's address |
 | `user_id` | the `uid` in your game's address |
+
+You can also log in and pick the game on the page instead: **Settings → Game & account**. Log in
+happens on the game's own website inside the background window (your password never passes through
+this tool) and is remembered until you log out. Each game keeps its own spots, history and records.
 
 ## Use
 
